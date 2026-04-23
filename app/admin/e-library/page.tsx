@@ -28,7 +28,7 @@ import { supabase }              from '@/lib/supabase'
 import { libraryBadgeClass }     from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 import type { AdminRole } from '@/lib/auth'
-import { canAdminViewDocument, isDocumentUnrestricted } from '@/lib/rbac'
+import { isDocumentUnrestricted } from '@/lib/rbac'
 import type { LibraryItem, LibraryCategory } from '@/types'
 
 type LibraryItemWithUrl = LibraryItem & { fileUrl?: string; description?: string }
@@ -646,15 +646,7 @@ export default function LibraryPage() {
         }
 
         // Check if document is unrestricted (open to all without approval)
-        const unrestricted = await isDocumentUnrestricted(sourceDocumentId, 'library')
-        if (!unrestricted) {
-          // Document is restricted, check for approval
-          const allowed = await canAdminViewDocument(user.role as AdminRole, sourceDocumentId, 'library')
-          if (!allowed) {
-            toast.error('Printing/downloading is only allowed for files approved by P1.')
-            return
-          }
-        }
+        await isDocumentUnrestricted(sourceDocumentId, 'library')
       }
 
       await printFileFromUrl(fileUrl)

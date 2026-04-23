@@ -14,7 +14,6 @@ import { Modal }            from '@/components/ui/Modal'
 import { AddDocumentModal } from '@/components/modals/AddDocumentModal'
 import { ApprovalWorkflowModal }  from '@/components/modals/ApprovalWorkflowModal'
 import { ForwardDocumentModal } from '@/components/modals/ForwardDocumentModal'
-import { RequestViewModal } from '@/components/modals/RequestViewModal'
 import { UploadGuard }      from '@/components/ui/UploadGuard'
 import { useModal, useDisclosure } from '@/hooks'
 import { useToast }         from '@/components/ui/Toast'
@@ -38,7 +37,6 @@ import {
   canUploadDocuments, canReviewDocuments, canFinalApprove,
   hasFullDocumentAccess, ROLE_META,
 } from '@/lib/permissions'
-import { roleNeedsViewRequest } from '@/lib/viewRequests'
 import type { MasterDocument, DocLevel } from '@/types'
 import type { AdminRole } from '@/lib/auth'
 
@@ -468,7 +466,6 @@ export default function MasterPage() {
   const [viewerFile,     setViewerFile]     = useState<{ url: string; name: string; sourceDocumentId?: string } | null>(null)
   const [activeApproval, setActiveApproval] = useState<DocumentApproval | null>(null)
   const [pendingApprovals, setPending]      = useState<DocumentApproval[]>([])
-  const [requestViewOpen, setRequestViewOpen] = useState(false)
   const [forwardModalOpen, setForwardModalOpen] = useState(false)
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null)
   const attachmentInputRef = useRef<HTMLInputElement>(null)
@@ -918,7 +915,6 @@ export default function MasterPage() {
   }
 
   const selectedDocumentRestricted = !!selection?.isRestricted
-  const canRequestAccess = !!selection && !!user && roleNeedsViewRequest(user.role as AdminRole)
 
   return (
     <>
@@ -1497,15 +1493,9 @@ export default function MasterPage() {
                       All document content in this panel is hidden until access is granted.
                     </p>
                     <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-                      {canRequestAccess ? (
-                        <Button variant="primary" onClick={() => setRequestViewOpen(true)}>
-                          Request Access
-                        </Button>
-                      ) : (
-                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-medium text-amber-800">
-                          Contact P1 to request access
-                        </div>
-                      )}
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-medium text-amber-800">
+                        Contact P1 to request access
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1518,16 +1508,6 @@ export default function MasterPage() {
       {/* Modals */}
       <AddDocumentModal open={uploadModal.isOpen} onClose={uploadModal.close} onAdd={handleAdd} />
       <EditModal doc={selection} open={editModal.isOpen} onClose={editModal.close} onSave={handleSave} />
-      {selection && (
-        <RequestViewModal
-          open={requestViewOpen}
-          onClose={() => setRequestViewOpen(false)}
-          documentId={selection.id}
-          documentType="master"
-          documentTitle={selection.title}
-          onRequestSubmitted={() => setRequestViewOpen(false)}
-        />
-      )}
 
       {viewerFile && (
         <InlineFileViewerModal

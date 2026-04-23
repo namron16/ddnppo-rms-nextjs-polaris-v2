@@ -13,7 +13,6 @@
 //   </P1Guard>
 
 import { useAuth } from '@/lib/auth'
-import { canUpload, canEdit, canArchive } from '@/lib/viewRequests'
 
 type GuardedAction = 'upload' | 'edit' | 'archive' | 'any'
 
@@ -35,9 +34,9 @@ const ACTION_LABELS: Record<GuardedAction, string> = {
 
 function checkPermission(role: string, action: GuardedAction): boolean {
   switch (action) {
-    case 'upload': return canUpload(role as any)
-    case 'edit': return canEdit(role as any)
-    case 'archive': return canArchive(role as any)
+    case 'upload': return role === 'P1'
+    case 'edit': return role === 'P1'
+    case 'archive': return role === 'P1'
     case 'any': return role === 'P1'
     default: return false
   }
