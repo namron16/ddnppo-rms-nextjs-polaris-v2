@@ -482,6 +482,7 @@ function AttachmentsTablePanel({
   allAttachments,
   onUpload,
   uploadingId,
+  onForwardOrder,
   onArchiveOrder,
   onDeleteOrder,
   canEditOrder,
@@ -501,6 +502,7 @@ function AttachmentsTablePanel({
   allAttachments: Map<string, SOAttachment[]>
   onUpload: (parentOrderId: string, parentAttId: string | null, files: FileList) => void
   uploadingId: string | null
+  onForwardOrder: () => void
   onArchiveOrder: () => void
   onDeleteOrder: () => void
   canEditOrder: boolean
@@ -599,6 +601,9 @@ function AttachmentsTablePanel({
 
         {!isDrillDown && (
           <div className="flex gap-2 flex-shrink-0">
+            {canEditOrder && (
+              <Button variant="primary" size="sm" onClick={onForwardOrder}>🔀 Forward</Button>
+            )}
             {canEditOrder && (
               <Button variant="outline" size="sm" onClick={onEditOrder}>✏ Edit</Button>
             )}
@@ -1451,14 +1456,11 @@ export default function AdminOrdersPage() {
                 <div className="space-y-4">
                   {/* Order header for P1 */}
                   {currentEntry.kind === 'order' && isSuperAdmin && (
-                    <div className="flex items-center justify-between">
+                    <div>
                       <div>
                         <h3 className="text-lg font-semibold text-slate-900">{currentEntry.order.subject}</h3>
                         <p className="text-sm text-slate-600">{currentEntry.order.reference}</p>
                       </div>
-                      <Button variant="primary" size="sm" onClick={() => setForwardModalOpen(true)}>
-                        🔀 Forward
-                      </Button>
                     </div>
                   )}
 
@@ -1469,6 +1471,7 @@ export default function AdminOrdersPage() {
                     allAttachments={attachmentsMap}
                     onUpload={handleUpload}
                     uploadingId={uploadingId}
+                    onForwardOrder={() => setForwardModalOpen(true)}
                     onArchiveOrder={() => selectedOrder && archiveDisc.open(selectedOrder)}
                     onDeleteOrder={() => selectedOrder && deleteDisc.open(selectedOrder)}
                     canEditOrder={isSuperAdmin}

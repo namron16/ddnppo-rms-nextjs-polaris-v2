@@ -13,6 +13,7 @@ import { ToolbarSelect }    from '@/components/ui/Toolbar'
 import { Modal }            from '@/components/ui/Modal'
 import { AddDocumentModal } from '@/components/modals/AddDocumentModal'
 import { ApprovalWorkflowModal }  from '@/components/modals/ApprovalWorkflowModal'
+import { ForwardDocumentModal } from '@/components/modals/ForwardDocumentModal'
 import { RequestViewModal } from '@/components/modals/RequestViewModal'
 import { UploadGuard }      from '@/components/ui/UploadGuard'
 import { useModal, useDisclosure } from '@/hooks'
@@ -468,6 +469,7 @@ export default function MasterPage() {
   const [activeApproval, setActiveApproval] = useState<DocumentApproval | null>(null)
   const [pendingApprovals, setPending]      = useState<DocumentApproval[]>([])
   const [requestViewOpen, setRequestViewOpen] = useState(false)
+  const [forwardModalOpen, setForwardModalOpen] = useState(false)
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null)
   const attachmentInputRef = useRef<HTMLInputElement>(null)
   const [showArchivedAttachments, setShowArchivedAttachments] = useState(false)
@@ -1104,6 +1106,7 @@ export default function MasterPage() {
                       {/* P1-only: edit + archive */}
                       {isP1 && (
                         <>
+                          <Button variant="primary" size="sm" onClick={() => setForwardModalOpen(true)}>🔀 Forward</Button>
                           <Button variant="outline" size="sm" onClick={editModal.open}>✏️ Edit</Button>
                           <Button variant="danger" size="sm" onClick={() => archiveDisc.open(selection.title)}>🗄️ Archive</Button>
                           <Button variant="danger" size="sm" onClick={() => deleteDisc.open(selection.title)}>🗑️ Delete</Button>
@@ -1547,6 +1550,23 @@ export default function MasterPage() {
             )
           }
           onClose={() => setViewerFile(null)}
+        />
+      )}
+
+      {selection && (
+        <ForwardDocumentModal
+          open={forwardModalOpen}
+          onClose={() => setForwardModalOpen(false)}
+          document={{
+            id: selection.id,
+            title: selection.title,
+            type: 'Master Document',
+            fileUrl: selection.fileUrl,
+            documentType: 'master',
+          }}
+          documentData={selection}
+          attachmentsMap={attachmentsMap}
+          onForwarded={() => setForwardModalOpen(false)}
         />
       )}
 
