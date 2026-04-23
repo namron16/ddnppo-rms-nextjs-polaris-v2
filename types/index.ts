@@ -1,0 +1,160 @@
+// types/index.ts
+// ─────────────────────────────────────────────
+// Shared TypeScript types used across the app.
+
+export type UserRole = 'admin' | 'officer'
+
+export interface User {
+  id: string
+  name: string
+  email: string
+  role: UserRole
+  initials: string
+  avatarColor: string
+}
+
+export type DocLevel = 'REGIONAL' | 'PROVINCIAL' | 'STATION'
+export type DocStatus = 'ACTIVE' | 'ARCHIVED'
+export type DocClassification = 'RESTRICTED' | 'CONFIDENTIAL'
+export type JournalType = 'MEMO' | 'REPORT' | 'LOG'
+export type LibraryCategory = 'MANUAL' | 'GUIDELINE' | 'TEMPLATE'
+export type LogAction = 'Viewed' | 'Downloaded' | 'Forwarded'
+
+export interface MasterDocument {
+  id: string
+  title: string
+  level: DocLevel
+  date: string
+  type: string
+  size: string
+  tag: string
+  taggedAdminAccess?: string[] // Baseline admin roles with permanent access (e.g., ['P2', 'P3', 'P5'])
+  children?: MasterDocument[]
+}
+
+export interface SpecialOrder {
+  id: string
+  reference: string
+  subject: string
+  date: string
+  attachments: number
+  status: DocStatus
+}
+
+export interface JournalEntry {
+  id: string
+  title: string
+  type: JournalType
+  author: string
+  date: string
+}
+
+export interface ConfidentialDoc {
+  id: string
+  title: string
+  classification: DocClassification
+  date: string
+  access: string
+}
+
+export interface LibraryItem {
+  id: string
+  title: string
+  category: LibraryCategory
+  size: string
+  dateAdded: string
+}
+
+export interface ActivityLog {
+  id: string
+  user: string
+  userInitials: string
+  userColor: string
+  action: LogAction
+  document: string
+  date: string
+  time: string
+  device: string
+}
+
+export interface OrgNode {
+  id: string
+  initials: string
+  rank: string
+  name: string
+  title: string
+  unit: string
+  contactNo?: string
+  color: string
+  children?: OrgNode[]
+}
+
+// ── 201 / Personnel File ─────────────────────
+
+export type Doc201Category =
+  | 'PERSONAL_DATA'
+  | 'CIVIL_DOCUMENTS'
+  | 'ACADEMIC'
+  | 'ELIGIBILITY'
+  | 'ASSIGNMENTS'
+  | 'SPECIAL_ORDERS'
+  | 'TRAINING'
+  | 'AWARDS'
+  | 'PROMOTIONS'
+  | 'FIREARMS'
+  | 'MEDICAL'
+  | 'CASES'
+  | 'LEAVE'
+  | 'PAY_RECORDS'
+  | 'FINANCIAL'
+  | 'TAXATION'
+  | 'IDENTIFICATION'
+
+export type Doc201Status = 'COMPLETE' | 'MISSING' | 'EXPIRED' | 'FOR_UPDATE'
+
+export interface Doc201Item {
+  id: string
+  /** Category from the PNP DPRM checklist */
+  category: Doc201Category
+  /** Document label as listed in the checklist */
+  label: string
+  /** Optional sub-label / notes (e.g. "Longevity and RCA Orders") */
+  sublabel?: string
+  status: Doc201Status
+  /** Date the document was filed / last updated */
+  dateUpdated: string
+  /** Uploader or filing officer */
+  filedBy?: string
+  /** File size if scanned */
+  fileSize?: string
+  /** Remarks or annotation */
+  remarks?: string
+}
+
+export interface Personnel201 {
+  id: string
+  /** Officer's full name */
+  name: string
+  rank: string
+  serialNo: string
+  unit: string
+  dateCreated: string
+  lastUpdated: string
+  initials: string
+  avatarColor: string
+  /** Profile photo URL */
+  photoUrl?: string
+  /** Extra profile fields shown in resume header */
+  address?: string
+  contactNo?: string
+  dateOfRetirement?: string
+  status?: string
+  firearmSerialNo?: string
+  pagIbigNo?: string
+  philHealthNo?: string
+  tin?: string
+  payslipAccountNo?: string
+  documents: Doc201Item[]
+
+  archiveAfterYears?: number
+}
