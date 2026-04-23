@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
+import { supabase } from '@/lib/supabase'
 import { cn } from '@/lib/utils'
 import LogoutConfirmModal from '@/components/modals/LogoutConfirmModal'
 import { ProfileSettingsModal } from '@/components/modals/ProfileSettingsModal'
@@ -48,10 +49,11 @@ const ADMIN_NAV: NavItem[] = [
   { label: 'Archive',         icon: '🗄️', href: '/admin/archive' },
 ]
 
-function NavLink({ item, active, onNavigate }: {
+function NavLink({ item, active, onNavigate, badgeCount }: {
   item: NavItem
   active: boolean
   onNavigate: (href: string) => void
+  badgeCount?: number
 }) {
   return (
     <Link
@@ -65,7 +67,12 @@ function NavLink({ item, active, onNavigate }: {
       )}
     >
       <span className="w-5 text-center text-base">{item.icon}</span>
-      {item.label}
+      <span className="flex-1">{item.label}</span>
+      {badgeCount && badgeCount > 0 && (
+        <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+          {badgeCount > 99 ? '99+' : badgeCount}
+        </span>
+      )}
     </Link>
   )
 }
@@ -78,6 +85,7 @@ export function Sidebar() {
   const [showLogoutConfirm,  setShowLogoutConfirm]  = useState(false)
   const [showProfileSettings, setShowProfileSettings] = useState(false)
   const [pendingHref, setPendingHref] = useState<string | null>(null)
+  const [unreadInboxCount, setUnreadInboxCount] = useState(0)
 
   // Local overrides — updated after profile save
   const [localDisplayName, setLocalDisplayName] = useState<string | null>(null)
@@ -103,6 +111,43 @@ export function Sidebar() {
   }, [router])
 
   useEffect(() => { setPendingHref(null) }, [pathname])
+
+  // Fetch unread inbox count
+  useEffect(() => {
+    if (!user) {
+      setUnreadInboxCount(0)
+      return
+    }
+
+    const fetchUnreadCount = async () => {
+      const { count } = await supabase
+        .from('inbox_items')
+        .select('id', { count: 'exact', head: true })
+        .eq('recipient_id', user.role)
+        .eq('status', 'unread')
+
+      setUnreadInboxCount(count || 0)
+    }
+
+    fetchUnreadCount()
+
+    // Set up real-time subscription
+    const channel = supabase
+      .channel('inbox_unread_count')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'inbox_items',
+        filter: `recipient_id=eq.${user.role}`
+      }, () => {
+        fetchUnreadCount()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user])
 
   function handleLogoutConfirm() {
     logout()
@@ -207,18 +252,21 @@ export function Sidebar() {
             ? P2_NAV.map(item => (
                 <NavLink key={item.href} item={item}
                   active={pathname === item.href || pendingHref === item.href}
-                  onNavigate={setPendingHref} />
+                  onNavigate={setPendingHref}
+                  badgeCount={item.href === '/admin/inbox' ? unreadInboxCount : undefined} />
               ))
             : isViewerNo201
               ? VIEWER_NAV.map(item => (
                   <NavLink key={item.href} item={item}
                     active={pathname === item.href || pendingHref === item.href}
-                    onNavigate={setPendingHref} />
+                    onNavigate={setPendingHref}
+                    badgeCount={item.href === '/admin/inbox' ? unreadInboxCount : undefined} />
                 ))
             : DOC_NAV.map(item => (
                 <NavLink key={item.href} item={item}
                   active={pathname === item.href || pendingHref === item.href}
-                  onNavigate={setPendingHref} />
+                  onNavigate={setPendingHref}
+                  badgeCount={item.href === '/admin/inbox' && !isP1 ? unreadInboxCount : undefined} />
               ))
           }
         </div>
@@ -230,7 +278,8 @@ export function Sidebar() {
             {ADMIN_NAV.map(item => (
               <NavLink key={item.href} item={item}
                 active={pathname === item.href || pendingHref === item.href}
-                onNavigate={setPendingHref} />
+                onNavigate={setPendingHref}
+                badgeCount={item.href === '/admin/inbox' && !isP1 ? unreadInboxCount : undefined} />
             ))}
           </div>
         )}
