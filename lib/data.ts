@@ -59,13 +59,9 @@ export async function updateMasterDocument(doc: MasterDocument & { fileUrl?: str
   if (error) console.warn('Supabase unavailable (update master_document):', error.message)
 }
 
-// Soft-archive master document by setting archived flag when available.
+// Master document archive state is tracked in archived_docs.
 export async function archiveMasterDocument(id: string): Promise<void> {
-  const { error } = await supabase
-    .from('master_documents')
-    .update({ archived: true })
-    .eq('id', id)
-  if (error) console.warn('Supabase unavailable (archive master_document):', error.message)
+  void id
 }
 
 export async function deleteMasterDocument(id: string): Promise<void> {
@@ -572,14 +568,7 @@ export async function restoreArchivedDoc(id: string): Promise<void> {
   }
 
   if (id.startsWith('arc-md-') || archiveType === 'master document') {
-    const sourceId = id.startsWith('arc-md-') ? id.replace('arc-md-', '') : undefined
-    if (sourceId) {
-      const { error } = await supabase
-        .from('master_documents')
-        .update({ archived: false })
-        .eq('id', sourceId)
-      if (error) console.warn('Supabase unavailable (restore master_document):', error.message)
-    }
+    // No row update needed for master_documents. Removing archived_docs entry restores visibility.
   }
 
   if (id.startsWith('arc-lib-') || archiveType === 'library item') {

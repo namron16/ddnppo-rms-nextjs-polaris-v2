@@ -93,16 +93,15 @@ export function useRealtimeMasterDocs({ setDocuments, setAttachmentsMap, user, i
   // Initial load
   useEffect(() => {
     const loadInitialDocuments = async () => {
-      let query = supabase
+      const baseQuery = supabase
         .from('master_documents')
         .select('*')
-        .eq('archived', false)
         .order('created_at', { ascending: false })
 
       // For P2-P10, only show documents saved by them
-      if (!isPrivileged && user) {
-        query = query.eq('saved_by', user.role)
-      }
+      const query = !isPrivileged && user
+        ? baseQuery.eq('saved_by', user.role)
+        : baseQuery
 
       const { data, error } = await query
       if (error) {
@@ -110,7 +109,24 @@ export function useRealtimeMasterDocs({ setDocuments, setAttachmentsMap, user, i
         return
       }
 
-      const docs = data.map(normalise)
+      const { data: archivedRows, error: archivedError } = await supabase
+        .from('archived_docs')
+        .select('id')
+
+      if (archivedError) {
+        console.error('Error loading archived master document ids:', archivedError)
+      }
+
+      const archivedIds = new Set(
+        (archivedRows ?? [])
+          .map((row: any) => String(row.id ?? ''))
+          .filter((id: string) => id.startsWith('arc-md-'))
+          .map((id: string) => id.replace('arc-md-', ''))
+      )
+
+      const docs = (data ?? [])
+        .map(normalise)
+        .filter(doc => !archivedIds.has(doc.id))
       setDocsRef.current(docs)
     }
 
