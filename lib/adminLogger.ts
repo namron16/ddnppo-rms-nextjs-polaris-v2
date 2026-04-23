@@ -37,6 +37,8 @@ export type LogActionType =
   | 'add_org_member'
   | 'edit_org_member'
   | 'remove_org_member'
+  | 'recall_inbox_item'
+  | 'save_inbox_item'
 
 export interface AdminLog {
   id: string

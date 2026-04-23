@@ -2,6 +2,8 @@
 // ─────────────────────────────────────────────
 // Shared TypeScript types used across the app.
 
+import { AdminRole } from "@/lib/auth"
+
 export type UserRole = 'admin' | 'officer'
 
 export interface User {
@@ -157,4 +159,24 @@ export interface Personnel201 {
   documents: Doc201Item[]
 
   archiveAfterYears?: number
+}
+
+// ── Inbox Items ─────────────────────────────
+
+export type InboxStatus = 'unread' | 'read' | 'saved'
+
+export interface InboxItem {
+  id: string
+  recipient_id: AdminRole
+  sender_id: AdminRole
+  document_type: 'master' | 'admin_order' | 'daily_journal' | 'library'
+  document_id: string
+  document_title: string
+  document_data: Record<string, any>
+  file_url?: string
+  attachments: string // JSON string of AttachmentNode[]
+  status: InboxStatus
+  saved_to?: 'master' | 'admin_order' | 'daily_journal' | 'library'
+  saved_at?: string
+  forwarded_at: string
 }
