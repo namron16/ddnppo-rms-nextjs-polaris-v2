@@ -26,7 +26,6 @@ interface DocEnriched {
   approval?: any
   canView?: boolean
   isRestricted: boolean
-  saved_by?: string
   children?: any[]
 }
 
@@ -57,7 +56,6 @@ function normalise(row: any): DocEnriched {
     taggedRoles: Array.isArray(row.tagged_admin_access) ? row.tagged_admin_access : [],
     canView: true,
     isRestricted: false,
-    saved_by: row.saved_by ?? undefined,
   }
 }
 
@@ -93,15 +91,10 @@ export function useRealtimeMasterDocs({ setDocuments, setAttachmentsMap, user, i
   // Initial load
   useEffect(() => {
     const loadInitialDocuments = async () => {
-      const baseQuery = supabase
+      const query = supabase
         .from('master_documents')
         .select('*')
         .order('created_at', { ascending: false })
-
-      // For P2-P10, only show documents saved by them
-      const query = !isPrivileged && user
-        ? baseQuery.eq('saved_by', user.role)
-        : baseQuery
 
       const { data, error } = await query
       if (error) {
@@ -141,10 +134,6 @@ export function useRealtimeMasterDocs({ setDocuments, setAttachmentsMap, user, i
         const row = payload.new as any
         if (row.archived) return
         const doc = normalise(row)
-        // P2-P10: only show documents saved by them
-        if (!isPrivileged && user) {
-          if (doc.saved_by !== user.role) return
-        }
         setDocsRef.current(prev => {
           if (prev.some(d => d.id === doc.id)) return prev
           return [...prev, doc]

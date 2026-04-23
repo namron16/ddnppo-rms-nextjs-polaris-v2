@@ -116,7 +116,6 @@ export async function saveInboxItemToPage(
           tag: documentData.tag || '',
           file_url: inboxItem.file_url || null,
           tagged_admin_access: documentData.taggedAdminAccess || null,
-          saved_by: recipientId,
         }
 
         const { error: insertError } = await supabase
