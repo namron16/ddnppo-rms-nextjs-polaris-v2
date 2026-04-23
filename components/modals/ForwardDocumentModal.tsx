@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/Badge'
 import { forwardDocument, buildAttachmentTree, type ForwardPayload } from '@/lib/forwarding'
 import { AdminRole } from '@/lib/auth'
 import { useToast } from '@/components/ui/Toast'
-import { FileText, Users, MessageSquare } from 'lucide-react'
+import { FileText, Users } from 'lucide-react'
 
 interface ForwardDocumentModalProps {
   open: boolean
@@ -37,7 +37,6 @@ export function ForwardDocumentModal({
   onForwarded
 }: ForwardDocumentModalProps) {
   const [selectedRecipients, setSelectedRecipients] = useState<Set<AdminRole>>(new Set())
-  const [note, setNote] = useState('')
   const [isForwarding, setIsForwarding] = useState(false)
   const { toast } = useToast()
 
@@ -91,8 +90,7 @@ export function ForwardDocumentModal({
         documentType: document.documentType,
         documentId: document.id,
         documentTitle: document.title,
-        recipients: Array.from(selectedRecipients),
-        note: note.trim() || undefined
+        recipients: Array.from(selectedRecipients)
       }
 
       const result = await forwardDocument(payload, documentData, attachmentsMap)
@@ -103,7 +101,6 @@ export function ForwardDocumentModal({
         onClose()
         // Reset form
         setSelectedRecipients(new Set())
-        setNote('')
       } else {
         toast.error('Forward failed. There was an error forwarding the document. Please try again.')
       }
@@ -119,7 +116,6 @@ export function ForwardDocumentModal({
     if (!isForwarding) {
       onClose()
       setSelectedRecipients(new Set())
-      setNote('')
     }
   }
 
@@ -128,16 +124,16 @@ export function ForwardDocumentModal({
       open={open}
       onClose={handleClose}
       title="Forward Document"
-      width="max-w-2xl"
+      width="max-w-lg"
     >
-      <div className="space-y-6">
+      <div className="p-4 md:p-5 space-y-4">
         {/* Document Preview */}
-        <div className="bg-slate-50 rounded-lg p-4 border">
-          <div className="flex items-start gap-3">
-            <FileText className="w-5 h-5 text-slate-600 mt-0.5 flex-shrink-0" />
+        <div className="bg-slate-50 rounded-lg p-3 border">
+          <div className="flex items-start gap-2.5">
+            <FileText className="w-4 h-4 text-slate-600 mt-0.5 flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <h3 className="font-medium text-slate-900 truncate">{document.title}</h3>
-              <p className="text-sm text-slate-600 mt-1">
+              <h3 className="text-sm font-medium text-slate-900 truncate">{document.title}</h3>
+              <p className="text-xs text-slate-600 mt-1">
                 Type: {document.type} • {attachmentStats.totalAttachments} attachment{attachmentStats.totalAttachments !== 1 ? 's' : ''}
                 {attachmentStats.maxDepth > 0 && ` across ${attachmentStats.maxDepth + 1} level${attachmentStats.maxDepth + 1 !== 1 ? 's' : ''}`}
               </p>
@@ -147,9 +143,9 @@ export function ForwardDocumentModal({
 
         {/* Recipient Selection */}
         <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Users className="w-4 h-4 text-slate-600" />
-            <label className="font-medium text-slate-900">Select Recipients (P2-P10)</label>
+          <div className="flex items-center gap-2 mb-2.5">
+            <Users className="w-3.5 h-3.5 text-slate-600" />
+            <label className="text-sm font-medium text-slate-900">Select Recipients (P2-P10)</label>
             <Button
               variant="ghost"
               size="sm"
@@ -160,18 +156,18 @@ export function ForwardDocumentModal({
             </Button>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2">
             {RECIPIENT_ROLES.map(role => (
-              <label key={role} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-slate-50 cursor-pointer">
+              <label key={role} className="flex items-center gap-2 p-2.5 border rounded-lg hover:bg-slate-50 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={selectedRecipients.has(role)}
                   onChange={() => handleRecipientToggle(role)}
-                  className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                  className="w-3.5 h-3.5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
                 />
                 <div className="flex-1">
-                  <span className="font-medium text-slate-900">{role}</span>
-                  <span className="text-sm text-slate-600 ml-2">
+                  <span className="text-sm font-medium text-slate-900">{role}</span>
+                  <span className="text-xs text-slate-600 ml-1.5">
                     {role === 'P2' ? 'Classified Documents' : 'Admin Officer'}
                   </span>
                 </div>
@@ -188,45 +184,23 @@ export function ForwardDocumentModal({
           )}
         </div>
 
-        {/* Optional Note */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <MessageSquare className="w-4 h-4 text-slate-600" />
-            <label className="font-medium text-slate-900">Optional Note</label>
-          </div>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Add a note for the recipients..."
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-            rows={3}
-            maxLength={500}
-          />
-          <p className="text-xs text-slate-500 mt-1">
-            {note.length}/500 characters
-          </p>
-        </div>
-
         {/* Forward Summary */}
         {selectedRecipients.size > 0 && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h4 className="font-medium text-blue-900 mb-2">Forward Summary</h4>
-            <div className="text-sm text-blue-800 space-y-1">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <h4 className="text-sm font-medium text-blue-900 mb-1.5">Forward Summary</h4>
+            <div className="text-xs text-blue-800 space-y-1">
               <p>• Document: <strong>{document.title}</strong></p>
               <p>• Recipients: <strong>{Array.from(selectedRecipients).join(', ')}</strong></p>
               <p>• Attachments: <strong>{attachmentStats.totalAttachments} file{attachmentStats.totalAttachments !== 1 ? 's' : ''}</strong></p>
               {attachmentStats.maxDepth > 0 && (
                 <p>• Hierarchy: <strong>{attachmentStats.maxDepth + 1} level{attachmentStats.maxDepth + 1 !== 1 ? 's' : ''} deep</strong></p>
               )}
-              {note.trim() && (
-                <p>• Note: <strong>Included</strong></p>
-              )}
             </div>
           </div>
         )}
 
         {/* Actions */}
-        <div className="flex justify-end gap-3 pt-4 border-t">
+        <div className="flex justify-end gap-2.5 pt-3 border-t">
           <Button
             variant="outline"
             onClick={handleClose}
