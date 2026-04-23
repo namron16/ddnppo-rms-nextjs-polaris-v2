@@ -1,3 +1,4 @@
+import { InboxItem } from "@/types"
 import { logAction } from "./adminLogger"
 import { AdminRole } from "./auth"
 import { supabase } from "./supabase"
@@ -98,15 +99,170 @@ export async function saveInboxItemToPage(
 
   if (error || !data) return false
 
-  // 2. Insert into the appropriate table scoped to this recipient
-  // (table choice based on targetPage, data from document_data JSON)
-  // ... insert logic per document type ...
+  const inboxItem = data as InboxItem
+  const documentData = inboxItem.document_data || {}
 
-  // 3. Mark inbox item as saved
-  await supabase
-    .from('inbox_items')
-    .update({ status: 'saved', saved_to: targetPage, saved_at: new Date().toISOString() })
-    .eq('id', inboxItemId)
+  // 2. Insert into the appropriate table based on targetPage
+  try {
+    switch (targetPage) {
+      case 'master': {
+        const masterDoc = {
+          id: inboxItem.document_id,
+          title: documentData.title || inboxItem.document_title,
+          level: documentData.level || 'REGIONAL',
+          type: documentData.type || 'Document',
+          date: documentData.date || new Date().toISOString().split('T')[0],
+          size: documentData.size || '0 KB',
+          tag: documentData.tag || '',
+          file_url: inboxItem.file_url || null,
+          tagged_admin_access: documentData.taggedAdminAccess || null,
+        }
 
-  return true
+        const { error: insertError } = await supabase
+          .from('master_documents')
+          .insert(masterDoc)
+
+        if (insertError) {
+          console.error('Error saving to master_documents:', insertError)
+          return false
+        }
+        break
+      }
+
+      case 'admin_order': {
+        const adminOrder = {
+          id: inboxItem.document_id,
+          reference: documentData.reference || inboxItem.document_title,
+          subject: documentData.subject || inboxItem.document_title,
+          date: documentData.date || new Date().toISOString().split('T')[0],
+          attachments: documentData.attachments || 0,
+          status: documentData.status || 'ACTIVE',
+          file_url: inboxItem.file_url || null,
+        }
+
+        const { error: insertError } = await supabase
+          .from('special_orders')
+          .insert(adminOrder)
+
+        if (insertError) {
+          console.error('Error saving to special_orders:', insertError)
+          return false
+        }
+
+        // Handle attachments if they exist
+        if (inboxItem.attachments && inboxItem.attachments !== '[]') {
+          const attachments = JSON.parse(inboxItem.attachments)
+          await saveAttachmentsToSpecialOrder(inboxItem.document_id, attachments, recipientId)
+        }
+        break
+      }
+
+      case 'daily_journal': {
+        const journalEntry = {
+          id: inboxItem.document_id,
+          title: documentData.title || inboxItem.document_title,
+          type: documentData.type || 'MEMO',
+          author: documentData.author || recipientId,
+          date: documentData.date || new Date().toISOString().split('T')[0],
+          content: documentData.content || null,
+          summary: documentData.summary || null,
+          file_url: inboxItem.file_url || null,
+          status: documentData.status || 'Draft',
+          attachments: documentData.attachments || (inboxItem.file_url ? 1 : 0),
+          archived: false,
+        }
+
+        const { error: insertError } = await supabase
+          .from('daily_journals')
+          .insert(journalEntry)
+
+        if (insertError) {
+          console.error('Error saving to daily_journals:', insertError)
+          return false
+        }
+        break
+      }
+
+      case 'library': {
+        const libraryItem = {
+          id: inboxItem.document_id,
+          title: documentData.title || inboxItem.document_title,
+          category: documentData.category || 'TEMPLATE',
+          size: documentData.size || '0 KB',
+          date_added: documentData.dateAdded || new Date().toISOString(),
+          file_url: inboxItem.file_url || null,
+          description: documentData.description || null,
+        }
+
+        const { error: insertError } = await supabase
+          .from('library_items')
+          .insert(libraryItem)
+
+        if (insertError) {
+          console.error('Error saving to library_items:', insertError)
+          return false
+        }
+        break
+      }
+
+      default:
+        console.error('Unknown target page:', targetPage)
+        return false
+    }
+
+    // 3. Mark inbox item as saved
+    const { error: updateError } = await supabase
+      .from('inbox_items')
+      .update({
+        status: 'saved',
+        saved_to: targetPage,
+        saved_at: new Date().toISOString()
+      })
+      .eq('id', inboxItemId)
+
+    if (updateError) {
+      console.error('Error updating inbox item status:', updateError)
+      return false
+    }
+
+    return true
+  } catch (err) {
+    console.error('Error in saveInboxItemToPage:', err)
+    return false
+  }
+}
+
+/**
+ * Helper function to save attachments to special orders
+ */
+async function saveAttachmentsToSpecialOrder(
+  specialOrderId: string,
+  attachments: AttachmentNode[],
+  uploadedBy: AdminRole
+): Promise<void> {
+  for (const attachment of attachments) {
+    const attachmentData = {
+      id: attachment.id,
+      special_order_id: specialOrderId,
+      file_name: attachment.file_name,
+      file_url: attachment.file_url,
+      file_size: attachment.file_size,
+      file_type: attachment.file_type,
+      uploaded_by: uploadedBy,
+      archived: false,
+    }
+
+    const { error } = await supabase
+      .from('special_order_attachments')
+      .insert(attachmentData)
+
+    if (error) {
+      console.error('Error saving attachment:', attachment.file_name, error)
+    }
+
+    // Recursively save child attachments
+    if (attachment.children && attachment.children.length > 0) {
+      await saveAttachmentsToSpecialOrder(specialOrderId, attachment.children, uploadedBy)
+    }
+  }
 }
