@@ -35,11 +35,18 @@ export default function InboxPage() {
 
     const fetchItems = async () => {
       setLoading(true)
-      const { data, error } = await supabase
+      const baseQuery = supabase
         .from('inbox_items')
         .select('*')
         .eq(isP1 ? 'sender_id' : 'recipient_id', user.role)
-        .order('forwarded_at', { ascending: false })
+
+      let { data, error } = await baseQuery.order('forwarded_at', { ascending: false })
+
+      if (error && error.code === '42703') {
+        const fallback = await baseQuery.order('created_at', { ascending: false })
+        data = fallback.data
+        error = fallback.error
+      }
 
       if (error) {
         console.error('Error fetching inbox items:', error)
@@ -246,6 +253,7 @@ function InboxItemCard({
 }: InboxItemCardProps) {
   const isUnread = item.status === 'unread'
   const isSaved = item.status === 'saved'
+  const itemDate = item.forwarded_at ?? item.created_at
 
   return (
     <div className={`border rounded-lg p-4 transition-all ${
@@ -280,9 +288,9 @@ function InboxItemCard({
 
           <div className="text-sm text-slate-600 mb-2">
             {isP1 ? (
-              <>Sent to {item.recipient_id} • {new Date(item.forwarded_at).toLocaleDateString()}</>
+              <>Sent to {item.recipient_id} • {itemDate ? new Date(itemDate).toLocaleDateString() : '—'}</>
             ) : (
-              <>From {item.sender_id} • {new Date(item.forwarded_at).toLocaleDateString()}</>
+              <>From {item.sender_id} • {itemDate ? new Date(itemDate).toLocaleDateString() : '—'}</>
             )}
           </div>
 
@@ -354,6 +362,7 @@ interface InboxItemModalProps {
 
 function InboxItemModal({ item, isP1, onClose, onSave, onRecall, saving }: InboxItemModalProps) {
   const attachments = JSON.parse(item.attachments || '[]')
+  const itemDate = item.forwarded_at ?? item.created_at
 
   return (
     <Modal
@@ -380,7 +389,7 @@ function InboxItemModal({ item, isP1, onClose, onSave, onRecall, saving }: Inbox
           <div>
             <label className="text-sm font-medium text-slate-700">Date</label>
             <p className="text-sm text-slate-900">
-              {new Date(item.forwarded_at).toLocaleString()}
+              {itemDate ? new Date(itemDate).toLocaleString() : '—'}
             </p>
           </div>
           <div>

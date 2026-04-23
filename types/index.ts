@@ -178,5 +178,6 @@ export interface InboxItem {
   status: InboxStatus
   saved_to?: 'master' | 'admin_order' | 'daily_journal' | 'library'
   saved_at?: string
-  forwarded_at: string
+  forwarded_at?: string
+  created_at?: string
 }

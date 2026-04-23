@@ -50,8 +50,9 @@ export async function forwardDocument(
   attachmentsMap: Map<string, any[]>
 ): Promise<{ success: boolean; count: number }> {
   const attachmentTree = buildAttachmentTree(payload.documentId, attachmentsMap)
+  const nowIso = new Date().toISOString()
 
-  const rows = payload.recipients.map(recipient => ({
+  const baseRows = payload.recipients.map(recipient => ({
     id: `fwd-${Date.now()}-${recipient}-${Math.random().toString(36).slice(2)}`,
     recipient_id: recipient,
     sender_id: 'P1',
@@ -62,12 +63,25 @@ export async function forwardDocument(
     file_url: documentData.fileUrl ?? null,
     attachments: JSON.stringify(attachmentTree),
     status: 'unread',
-    forwarded_at: new Date().toISOString(),
   }))
 
-  const { error } = await supabase.from('inbox_items').insert(rows)
+  // Schema compatibility: some environments use forwarded_at, others use created_at.
+  const firstAttemptRows = baseRows.map(row => ({ ...row, forwarded_at: nowIso }))
+  let { error } = await supabase.from('inbox_items').insert(firstAttemptRows)
+
+  if (error && error.code === '42703') {
+    const secondAttemptRows = baseRows.map(row => ({ ...row, created_at: nowIso }))
+    const retry = await supabase.from('inbox_items').insert(secondAttemptRows)
+    error = retry.error
+  }
+
   if (error) {
-    console.error('forwardDocument error:', error.message)
+    console.error('forwardDocument error:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    })
     return { success: false, count: 0 }
   }
 
@@ -77,7 +91,7 @@ export async function forwardDocument(
       `P1 forwarded "${payload.documentTitle}" to ${recipient}`, 'P1')
   }
 
-  return { success: true, count: rows.length }
+  return { success: true, count: baseRows.length }
 }
 
 /**
