@@ -74,16 +74,11 @@ export function useRealtimeSpecialOrders({ setOrders, setAttachmentsMap, user, i
   // Initial load
   useEffect(() => {
     const loadInitialOrders = async () => {
-      let query = supabase
+      const query = supabase
         .from('special_orders')
         .select('*')
         .neq('status', 'ARCHIVED')
         .order('created_at', { ascending: false })
-
-      // For P2-P10, only show orders saved by them
-      if (!isP1 && user) {
-        query = query.eq('saved_by', user.role)
-      }
 
       const { data, error } = await query
       if (error) {
@@ -91,7 +86,7 @@ export function useRealtimeSpecialOrders({ setOrders, setAttachmentsMap, user, i
         return
       }
 
-      const orders = data.map(normaliseOrder)
+      const orders = (data ?? []).map(normaliseOrder)
       setOrdersRef.current(orders)
     }
 
@@ -105,8 +100,6 @@ export function useRealtimeSpecialOrders({ setOrders, setAttachmentsMap, user, i
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'special_orders' }, payload => {
         const order = normaliseOrder(payload.new)
         if (order.status === 'ARCHIVED') return
-        // For P2-P10, only add if saved_by matches
-        if (!isP1 && user && order.saved_by !== user.role) return
         setOrdersRef.current(prev => {
           if (prev.some(o => o.id === order.id)) return prev
           return [order, ...prev]
@@ -166,5 +159,5 @@ export function useRealtimeSpecialOrders({ setOrders, setAttachmentsMap, user, i
       void supabase.removeChannel(ordersChannel)
       void supabase.removeChannel(attsChannel)
     }
-  }, [])
+  }, [isP1, user])
 }

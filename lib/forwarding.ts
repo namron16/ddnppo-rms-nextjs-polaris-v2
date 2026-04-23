@@ -138,7 +138,6 @@ export async function saveInboxItemToPage(
           attachments: documentData.attachments || 0,
           status: documentData.status || 'ACTIVE',
           file_url: inboxItem.file_url || null,
-          saved_by: recipientId,
         }
 
         const { error: insertError } = await supabase
