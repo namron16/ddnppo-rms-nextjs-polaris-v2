@@ -13,9 +13,8 @@ import { ToolbarSelect }    from '@/components/ui/Toolbar'
 import { Modal }            from '@/components/ui/Modal'
 import { AddDocumentModal } from '@/components/modals/AddDocumentModal'
 import { ApprovalWorkflowModal }  from '@/components/modals/ApprovalWorkflowModal'
-import { RequestViewModal } from '@/components/modals/RequestViewModal'
+import { ForwardDocumentModal } from '@/components/modals/ForwardDocumentModal'
 import { ApprovalStatusBadge } from '@/components/ui/BlurredDocumentGuard'
-import { VisibilityTagSelector } from '@/components/ui/VisibilityTagSelector'
 import { UploadGuard }      from '@/components/ui/UploadGuard'
 import { useModal, useDisclosure } from '@/hooks'
 import { useToast }         from '@/components/ui/Toast'
@@ -29,7 +28,7 @@ import {
   archiveMasterDocument, deleteMasterDocument, addArchivedDoc, getArchivedDocs,
 } from '@/lib/data'
 import {
-  getApproval, getPendingApprovals, getBatchVisibility,
+  getApproval, getPendingApprovals,
   getDocumentTaggedRoles, canAdminViewDocument, isDocumentUnrestricted,
   createApproval, reviewByDPDAorDPDO, finalApproveByPD,
   type DocumentApproval, type DocType,
@@ -386,7 +385,6 @@ function EditModal({ doc, open, onClose, onSave }: {
       tag,
       date,
       type,
-      taggedAdminAccess: taggedRoles,
     })
   }
   const cls = 'w-full px-3 py-2.5 border-[1.5px] border-slate-200 rounded-lg text-sm bg-slate-50 focus:outline-none focus:border-blue-500 focus:bg-white transition'
@@ -432,11 +430,6 @@ function EditModal({ doc, open, onClose, onSave }: {
           </div>
         </div>
 
-        <VisibilityTagSelector
-          selected={taggedRoles}
-          onChange={setTaggedRoles}
-        />
-
         <div className="flex justify-end gap-2.5">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button variant="primary" onClick={submit}>💾 Save</Button>
@@ -473,8 +466,8 @@ export default function MasterPage() {
   const [viewerFile,     setViewerFile]     = useState<{ url: string; name: string; sourceDocumentId?: string } | null>(null)
   const [activeApproval, setActiveApproval] = useState<DocumentApproval | null>(null)
   const [pendingApprovals, setPending]      = useState<DocumentApproval[]>([])
-  const [requestViewOpen, setRequestViewOpen] = useState(false)
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null)
+  const [forwardModalOpen, setForwardModalOpen] = useState(false)
   const attachmentInputRef = useRef<HTMLInputElement>(null)
   const [showArchivedAttachments, setShowArchivedAttachments] = useState(false)
   const [editingAttachmentId, setEditingAttachmentId] = useState<string | null>(null)
@@ -600,18 +593,14 @@ export default function MasterPage() {
 
         // Enrich with approvals and visibility
         const docIds = activeDocs.map((d: DocWithUrl) => d.id)
-        let visibleIds = new Set<string>(docIds)
-
-        if (user && !isPrivileged) {
-          visibleIds = await getBatchVisibility(user.role as AdminRole, docIds, 'master')
-        }
+        const visibleIds = new Set<string>(docIds)
 
         const enriched: DocEnriched[] = await Promise.all(
           activeDocs.map(async (doc: DocWithUrl) => {
             const approval = await getApproval(doc.id, 'master')
-            const canView  = isPrivileged ? true : visibleIds.has(doc.id)
+            const canView  = true
             const taggedRoles = isP1 ? await getDocumentTaggedRoles(doc.id, 'master') : []
-            return { ...doc, approval, canView, isRestricted: !canView, taggedRoles }
+            return { ...doc, approval, canView, isRestricted: false, taggedRoles }
           })
         )
         setDocuments(enriched)
@@ -1003,7 +992,11 @@ export default function MasterPage() {
                     <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                   </div>
                 ) : filtered.length === 0 ? (
-                  <EmptyState icon="📁" title="No documents" description="No active master documents." />
+                  <EmptyState 
+                    icon="📁" 
+                    title={isP1 ? "No documents" : "No saved documents"} 
+                    description={isP1 ? "No active master documents." : "Save documents from your Inbox to view them here."} 
+                  />
                 ) : (
                   filtered.map(({ doc, depth }) => {
                     const activeCount = (attachmentsMap.get(doc.id) ?? []).filter(a => !a.archived && !a.parent_attachment_id).length
@@ -1131,6 +1124,7 @@ export default function MasterPage() {
                       {isP1 && (
                         <>
                           <Button variant="outline" size="sm" onClick={editModal.open}>✏️ Edit</Button>
+                          <Button variant="primary" size="sm" onClick={() => setForwardModalOpen(true)}>🔀 Forward</Button>
                           <Button variant="danger" size="sm" onClick={() => archiveDisc.open(selection.title)}>🗄️ Archive</Button>
                           <Button variant="danger" size="sm" onClick={() => deleteDisc.open(selection.title)}>🗑️ Delete</Button>
                         </>
@@ -1570,14 +1564,21 @@ export default function MasterPage() {
       {/* Modals */}
       <AddDocumentModal open={uploadModal.isOpen} onClose={uploadModal.close} onAdd={handleAdd} />
       <EditModal doc={selection} open={editModal.isOpen} onClose={editModal.close} onSave={handleSave} />
-      {selection && (
-        <RequestViewModal
-          open={requestViewOpen}
-          onClose={() => setRequestViewOpen(false)}
-          documentId={selection.id}
-          documentType="master"
-          documentTitle={selection.title}
-          onRequestSubmitted={() => setRequestViewOpen(false)}
+
+      {selection && isP1 && (
+        <ForwardDocumentModal
+          open={forwardModalOpen}
+          onClose={() => setForwardModalOpen(false)}
+          document={{
+            id: selection.id,
+            title: selection.title,
+            type: selection.type,
+            fileUrl: selection.fileUrl,
+            documentType: 'master'
+          }}
+          documentData={selection}
+          attachmentsMap={attachmentsMap}
+          onForwarded={() => setForwardModalOpen(false)}
         />
       )}
 

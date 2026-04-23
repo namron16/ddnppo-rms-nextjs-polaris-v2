@@ -61,13 +61,42 @@ function normaliseAtt(row: any): SOAttachment {
 interface Options {
   setOrders: React.Dispatch<React.SetStateAction<any[]>>
   setAttachmentsMap: React.Dispatch<React.SetStateAction<Map<string, SOAttachment[]>>>
+  user: { role: string } | null
+  isP1: boolean
 }
 
-export function useRealtimeSpecialOrders({ setOrders, setAttachmentsMap }: Options) {
+export function useRealtimeSpecialOrders({ setOrders, setAttachmentsMap, user, isP1 }: Options) {
   const setOrdersRef = useRef(setOrders)
   const setAttsRef = useRef(setAttachmentsMap)
   useEffect(() => { setOrdersRef.current = setOrders }, [setOrders])
   useEffect(() => { setAttsRef.current = setAttachmentsMap }, [setAttachmentsMap])
+
+  // Initial load
+  useEffect(() => {
+    const loadInitialOrders = async () => {
+      let query = supabase
+        .from('special_orders')
+        .select('*')
+        .neq('status', 'ARCHIVED')
+        .order('created_at', { ascending: false })
+
+      // For P2-P10, only show orders saved by them
+      if (!isP1 && user) {
+        query = query.eq('saved_by', user.role)
+      }
+
+      const { data, error } = await query
+      if (error) {
+        console.error('Error loading special orders:', error)
+        return
+      }
+
+      const orders = data.map(normaliseOrder)
+      setOrdersRef.current(orders)
+    }
+
+    loadInitialOrders()
+  }, [user, isP1])
 
   useEffect(() => {
     // ── Orders ─────────────────────────────────────
@@ -76,6 +105,8 @@ export function useRealtimeSpecialOrders({ setOrders, setAttachmentsMap }: Optio
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'special_orders' }, payload => {
         const order = normaliseOrder(payload.new)
         if (order.status === 'ARCHIVED') return
+        // For P2-P10, only add if saved_by matches
+        if (!isP1 && user && order.saved_by !== user.role) return
         setOrdersRef.current(prev => {
           if (prev.some(o => o.id === order.id)) return prev
           return [order, ...prev]

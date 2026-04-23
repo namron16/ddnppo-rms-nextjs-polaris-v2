@@ -116,6 +116,7 @@ export async function saveInboxItemToPage(
           tag: documentData.tag || '',
           file_url: inboxItem.file_url || null,
           tagged_admin_access: documentData.taggedAdminAccess || null,
+          saved_by: recipientId,
         }
 
         const { error: insertError } = await supabase
@@ -138,6 +139,7 @@ export async function saveInboxItemToPage(
           attachments: documentData.attachments || 0,
           status: documentData.status || 'ACTIVE',
           file_url: inboxItem.file_url || null,
+          saved_by: recipientId,
         }
 
         const { error: insertError } = await supabase
@@ -170,6 +172,7 @@ export async function saveInboxItemToPage(
           status: documentData.status || 'Draft',
           attachments: documentData.attachments || (inboxItem.file_url ? 1 : 0),
           archived: false,
+          saved_by: recipientId,
         }
 
         const { error: insertError } = await supabase
@@ -192,6 +195,7 @@ export async function saveInboxItemToPage(
           date_added: documentData.dateAdded || new Date().toISOString(),
           file_url: inboxItem.file_url || null,
           description: documentData.description || null,
+          saved_by: recipientId,
         }
 
         const { error: insertError } = await supabase

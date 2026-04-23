@@ -12,6 +12,7 @@ import { ConfirmDialog }        from '@/components/ui/ConfirmDialog'
 import { ToolbarSelect }        from '@/components/ui/Toolbar'
 import { Modal }                from '@/components/ui/Modal'
 import { AddSpecialOrderModal } from '@/components/modals/AddSpecialOrderModal'
+import { ForwardDocumentModal } from '@/components/modals/ForwardDocumentModal'
 import { useModal, useDisclosure } from '@/hooks'
 import { useToast }             from '@/components/ui/Toast'
 import { FileText, Paperclip } from 'lucide-react'
@@ -1015,7 +1016,7 @@ export default function AdminOrdersPage() {
   const [uploadingId,    setUploadingId]    = useState<string | null>(null)
   const [archivingAtt,   setArchivingAtt]   = useState(false)
 
-  useRealtimeSpecialOrders({ setOrders, setAttachmentsMap })
+  useRealtimeSpecialOrders({ setOrders, setAttachmentsMap, user, isP1: isSuperAdmin })
 
   const [navStack, setNavStack] = useState<NavEntry[]>([])
 
@@ -1026,6 +1027,7 @@ export default function AdminOrdersPage() {
   const archiveDisc    = useDisclosure<SOWithUrl>()
   const deleteDisc     = useDisclosure<SOWithUrl>()
   const editOrderDisc  = useDisclosure<SOWithUrl>()
+  const [forwardModalOpen, setForwardModalOpen] = useState(false)
 
   const currentEntry: NavEntry | null = navStack.length > 0 ? navStack[navStack.length - 1] : null
 
@@ -1406,7 +1408,11 @@ export default function AdminOrdersPage() {
                     <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                   </div>
                 ) : filteredOrders.length === 0 ? (
-                  <EmptyState icon="📋" title="No orders found" description="Create your first order." />
+                  <EmptyState 
+                    icon="📋" 
+                    title={isSuperAdmin ? "No orders found" : "No saved orders"} 
+                    description={isSuperAdmin ? "Create your first order." : "Save orders from your Inbox to view them here."} 
+                  />
                 ) : (
                   filteredOrders.map(order => (
                     <OrderListNode
@@ -1452,26 +1458,41 @@ export default function AdminOrdersPage() {
                   />
                 </div>
               ) : (
-                <AttachmentsTablePanel
-                  navStack={navStack}
-                  currentEntry={currentEntry}
-                  attachments={currentAttachments}
-                  allAttachments={attachmentsMap}
-                  onUpload={handleUpload}
-                  uploadingId={uploadingId}
-                  onArchiveOrder={() => selectedOrder && archiveDisc.open(selectedOrder)}
-                  onDeleteOrder={() => selectedOrder && deleteDisc.open(selectedOrder)}
-                  canEditOrder={isSuperAdmin}
-                  onEditOrder={() => selectedOrder && editOrderDisc.open(selectedOrder)}
-                  onViewFile={handleViewFile}
-                  onDownloadFile={handleDownloadFile}
-                  onPrintFile={handlePrintFile}
-                  onArchiveAttachment={att => archiveAttDisc.open(att)}
-                  onRestoreAttachment={handleRestoreAttachment}
-                  onDrillDown={handleDrillDown}
-                  onNavigateTo={handleNavigateTo}
-                  onRenameAttachment={handleRenameAttachment}
-                />
+                <div className="space-y-4">
+                  {/* Order header for P1 */}
+                  {currentEntry.kind === 'order' && isSuperAdmin && (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-lg font-semibold text-slate-900">{currentEntry.order.subject}</h3>
+                        <p className="text-sm text-slate-600">{currentEntry.order.reference}</p>
+                      </div>
+                      <Button variant="primary" size="sm" onClick={() => setForwardModalOpen(true)}>
+                        🔀 Forward
+                      </Button>
+                    </div>
+                  )}
+
+                  <AttachmentsTablePanel
+                    navStack={navStack}
+                    currentEntry={currentEntry}
+                    attachments={currentAttachments}
+                    allAttachments={attachmentsMap}
+                    onUpload={handleUpload}
+                    uploadingId={uploadingId}
+                    onArchiveOrder={() => selectedOrder && archiveDisc.open(selectedOrder)}
+                    onDeleteOrder={() => selectedOrder && deleteDisc.open(selectedOrder)}
+                    canEditOrder={isSuperAdmin}
+                    onEditOrder={() => selectedOrder && editOrderDisc.open(selectedOrder)}
+                    onViewFile={handleViewFile}
+                    onDownloadFile={handleDownloadFile}
+                    onPrintFile={handlePrintFile}
+                    onArchiveAttachment={att => archiveAttDisc.open(att)}
+                    onRestoreAttachment={handleRestoreAttachment}
+                    onDrillDown={handleDrillDown}
+                    onNavigateTo={handleNavigateTo}
+                    onRenameAttachment={handleRenameAttachment}
+                  />
+                </div>
               )}
             </div>
           </div>
@@ -1489,6 +1510,23 @@ export default function AdminOrdersPage() {
         onClose={editOrderDisc.close}
         onSave={handleSaveOrder}
       />
+
+      {selectedOrder && isSuperAdmin && (
+        <ForwardDocumentModal
+          open={forwardModalOpen}
+          onClose={() => setForwardModalOpen(false)}
+          document={{
+            id: selectedOrder.id,
+            title: selectedOrder.subject,
+            type: 'Special Order',
+            fileUrl: selectedOrder.fileUrl,
+            documentType: 'admin_order'
+          }}
+          documentData={selectedOrder}
+          attachmentsMap={attachmentsMap}
+          onForwarded={() => setForwardModalOpen(false)}
+        />
+      )}
 
       {viewerFile && (
         <InlineFileViewerModal
