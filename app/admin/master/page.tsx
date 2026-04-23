@@ -13,8 +13,7 @@ import { ToolbarSelect }    from '@/components/ui/Toolbar'
 import { Modal }            from '@/components/ui/Modal'
 import { AddDocumentModal } from '@/components/modals/AddDocumentModal'
 import { ApprovalWorkflowModal }  from '@/components/modals/ApprovalWorkflowModal'
-import { ForwardDocumentModal } from '@/components/modals/ForwardDocumentModal'
-import { ApprovalStatusBadge } from '@/components/ui/BlurredDocumentGuard'
+import { RequestViewModal } from '@/components/modals/RequestViewModal'
 import { UploadGuard }      from '@/components/ui/UploadGuard'
 import { useModal, useDisclosure } from '@/hooks'
 import { useToast }         from '@/components/ui/Toast'
@@ -28,8 +27,8 @@ import {
   archiveMasterDocument, deleteMasterDocument, addArchivedDoc, getArchivedDocs,
 } from '@/lib/data'
 import {
-  getApproval, getPendingApprovals,
-  getDocumentTaggedRoles, canAdminViewDocument, isDocumentUnrestricted,
+  getApproval, getPendingApprovals, 
+   isDocumentUnrestricted,
   createApproval, reviewByDPDAorDPDO, finalApproveByPD,
   type DocumentApproval, type DocType,
 } from '@/lib/rbac'
@@ -385,6 +384,7 @@ function EditModal({ doc, open, onClose, onSave }: {
       tag,
       date,
       type,
+      taggedAdminAccess: taggedRoles,
     })
   }
   const cls = 'w-full px-3 py-2.5 border-[1.5px] border-slate-200 rounded-lg text-sm bg-slate-50 focus:outline-none focus:border-blue-500 focus:bg-white transition'
@@ -430,6 +430,7 @@ function EditModal({ doc, open, onClose, onSave }: {
           </div>
         </div>
 
+
         <div className="flex justify-end gap-2.5">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button variant="primary" onClick={submit}>💾 Save</Button>
@@ -466,8 +467,8 @@ export default function MasterPage() {
   const [viewerFile,     setViewerFile]     = useState<{ url: string; name: string; sourceDocumentId?: string } | null>(null)
   const [activeApproval, setActiveApproval] = useState<DocumentApproval | null>(null)
   const [pendingApprovals, setPending]      = useState<DocumentApproval[]>([])
+  const [requestViewOpen, setRequestViewOpen] = useState(false)
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null)
-  const [forwardModalOpen, setForwardModalOpen] = useState(false)
   const attachmentInputRef = useRef<HTMLInputElement>(null)
   const [showArchivedAttachments, setShowArchivedAttachments] = useState(false)
   const [editingAttachmentId, setEditingAttachmentId] = useState<string | null>(null)
@@ -499,21 +500,19 @@ export default function MasterPage() {
   const syncDocumentAccess = useCallback(async (documentId: string) => {
     if (!user || isPrivileged) return true
 
-    const canView = await canAdminViewDocument(user.role as AdminRole, documentId, 'master')
 
     setDocuments(prev => prev.map(doc => (
       doc.id === documentId
-        ? { ...doc, canView, isRestricted: !canView }
+        ? { ...doc}
         : doc
     )))
 
     setSelection(prev => prev && prev.id === documentId
-      ? { ...prev, canView, isRestricted: !canView }
+      ? { ...prev }
       : prev
     )
 
-    return canView
-  }, [user, isPrivileged])
+  }, [user, isPrivileged])  
 
   const handleDownloadFile = useCallback(async (
     fileUrl: string,
@@ -528,11 +527,7 @@ export default function MasterPage() {
           return
         }
 
-        const allowed = await canAdminViewDocument(user.role as AdminRole, sourceDocumentId, 'master')
-        if (!allowed) {
-          toast.error('Printing/downloading is only allowed for files approved by P1.')
-          return
-        }
+        
       }
 
       setDownloadingKey(downloadKey)
@@ -558,16 +553,7 @@ export default function MasterPage() {
           return
         }
 
-        // Check if document is unrestricted (open to all without approval)
-        const unrestricted = await isDocumentUnrestricted(sourceDocumentId, 'master')
-        if (!unrestricted) {
-          // Document is restricted, check for approval
-          const allowed = await canAdminViewDocument(user.role as AdminRole, sourceDocumentId, 'master')
-          if (!allowed) {
-            toast.error('Printing/downloading is only allowed for files approved by P1.')
-            return
-          }
-        }
+       
       }
 
       await printFileFromUrl(fileUrl)
@@ -593,14 +579,15 @@ export default function MasterPage() {
 
         // Enrich with approvals and visibility
         const docIds = activeDocs.map((d: DocWithUrl) => d.id)
-        const visibleIds = new Set<string>(docIds)
+        let visibleIds = new Set<string>(docIds)
+
+        
 
         const enriched: DocEnriched[] = await Promise.all(
           activeDocs.map(async (doc: DocWithUrl) => {
             const approval = await getApproval(doc.id, 'master')
-            const canView  = true
-            const taggedRoles = isP1 ? await getDocumentTaggedRoles(doc.id, 'master') : []
-            return { ...doc, approval, canView, isRestricted: false, taggedRoles }
+            const canView  = isPrivileged ? true : visibleIds.has(doc.id)
+            return { ...doc, approval, canView, isRestricted: !canView }
           })
         )
         setDocuments(enriched)
@@ -992,11 +979,7 @@ export default function MasterPage() {
                     <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                   </div>
                 ) : filtered.length === 0 ? (
-                  <EmptyState 
-                    icon="📁" 
-                    title={isP1 ? "No documents" : "No saved documents"} 
-                    description={isP1 ? "No active master documents." : "Save documents from your Inbox to view them here."} 
-                  />
+                  <EmptyState icon="📁" title="No documents" description="No active master documents." />
                 ) : (
                   filtered.map(({ doc, depth }) => {
                     const activeCount = (attachmentsMap.get(doc.id) ?? []).filter(a => !a.archived && !a.parent_attachment_id).length
@@ -1104,9 +1087,7 @@ export default function MasterPage() {
                         <h2 className="text-lg font-extrabold text-slate-800">{selection.title}</h2>
                         <Badge className={levelBadgeClass(selection.level)}>{selection.level}</Badge>
                         <Badge className="bg-blue-50 text-blue-700 border border-blue-200">{selection.tag}</Badge>
-                        {(isP1 || isReviewer || isPD) && selection.approval && (
-                          <ApprovalStatusBadge approval={selection.approval} compact />
-                        )}
+                        
                       </div>
                       <div className="flex items-center gap-2 flex-wrap text-xs text-slate-500">
                         <span className="bg-slate-100 px-2 py-0.5 rounded-full">📅 {selection.date}</span>
@@ -1124,7 +1105,6 @@ export default function MasterPage() {
                       {isP1 && (
                         <>
                           <Button variant="outline" size="sm" onClick={editModal.open}>✏️ Edit</Button>
-                          <Button variant="primary" size="sm" onClick={() => setForwardModalOpen(true)}>🔀 Forward</Button>
                           <Button variant="danger" size="sm" onClick={() => archiveDisc.open(selection.title)}>🗄️ Archive</Button>
                           <Button variant="danger" size="sm" onClick={() => deleteDisc.open(selection.title)}>🗑️ Delete</Button>
                         </>
@@ -1182,36 +1162,7 @@ export default function MasterPage() {
                     </div>
                   ) : null}
 
-                  {/* Visibility tagging info for P1 */}
-                  {isP1 && selection.taggedRoles !== undefined && (
-                    <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-xs font-bold text-violet-800">🏷️ Tagged Admin Access</p>
-                        <span className="text-[11px] text-violet-600 font-medium">
-                          {selection.taggedRoles.length === 0 ? 'None tagged' : `${selection.taggedRoles.length} admins`}
-                        </span>
-                      </div>
-                      {selection.taggedRoles.length === 0 ? (
-                        <p className="text-[11px] text-violet-600">No P2–P10 tagged. All viewer roles see blurred access.</p>
-                      ) : (
-                        <div className="flex flex-wrap gap-1.5">
-                          {selection.taggedRoles.map(role => (
-                            <span
-                              key={role}
-                              className="text-[11px] font-bold px-2 py-0.5 rounded-full"
-                              style={{
-                                background: ROLE_META[role].color + '20',
-                                color: ROLE_META[role].color,
-                                border: `1px solid ${ROLE_META[role].color}40`,
-                              }}
-                            >
-                              {role}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                 
 
                   {/* Attachments */}
                   <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -1564,21 +1515,14 @@ export default function MasterPage() {
       {/* Modals */}
       <AddDocumentModal open={uploadModal.isOpen} onClose={uploadModal.close} onAdd={handleAdd} />
       <EditModal doc={selection} open={editModal.isOpen} onClose={editModal.close} onSave={handleSave} />
-
-      {selection && isP1 && (
-        <ForwardDocumentModal
-          open={forwardModalOpen}
-          onClose={() => setForwardModalOpen(false)}
-          document={{
-            id: selection.id,
-            title: selection.title,
-            type: selection.type,
-            fileUrl: selection.fileUrl,
-            documentType: 'master'
-          }}
-          documentData={selection}
-          attachmentsMap={attachmentsMap}
-          onForwarded={() => setForwardModalOpen(false)}
+      {selection && (
+        <RequestViewModal
+          open={requestViewOpen}
+          onClose={() => setRequestViewOpen(false)}
+          documentId={selection.id}
+          documentType="master"
+          documentTitle={selection.title}
+          onRequestSubmitted={() => setRequestViewOpen(false)}
         />
       )}
 

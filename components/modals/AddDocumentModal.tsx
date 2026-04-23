@@ -8,7 +8,6 @@ import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { supabase } from '@/lib/supabase'
-import { VisibilityTagSelector } from '@/components/ui/VisibilityTagSelector'
 import { AddDocumentSchema, zodErrors } from '@/lib/validations'
 import {
   assertCanUpload,
@@ -202,13 +201,7 @@ export function AddDocumentModal({ open, onClose, onAdd }: AddDocumentModalProps
           </div>
         </div>
 
-        {/* ── Visibility Tag Selector (P1 only) ── */}
-        <VisibilityTagSelector
-          selected={taggedRoles}
-          onChange={setTaggedRoles}
-          disabled={uploading}
-        />
-
+       
         {/* File upload */}
         <input ref={fileInputRef} type="file"
           accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp"

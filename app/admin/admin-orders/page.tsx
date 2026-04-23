@@ -30,7 +30,6 @@ import { statusBadgeClass }     from '@/lib/utils'
 import { logDeleteDocument, logViewDocument }      from '@/lib/adminLogger'
 import { useAuth } from '@/lib/auth'
 import type { AdminRole } from '@/lib/auth'
-import { canAdminViewDocument, isDocumentUnrestricted } from '@/lib/rbac'
 import { useRealtimeSpecialOrders } from '@/hooks/useRealtimeSpecialOrders'
 import type { SpecialOrder }    from '@/types'
 
@@ -1329,16 +1328,7 @@ export default function AdminOrdersPage() {
           return
         }
 
-        // Check if document is unrestricted (open to all without approval)
-        const unrestricted = await isDocumentUnrestricted(sourceDocumentId, 'special_order')
-        if (!unrestricted) {
-          // Document is restricted, check for approval
-          const allowed = await canAdminViewDocument(user.role as AdminRole, sourceDocumentId, 'special_order')
-          if (!allowed) {
-            toast.error('Printing/downloading is only allowed for files approved by P1.')
-            return
-          }
-        }
+       
       }
 
       await printFileFromUrl(fileUrl)
