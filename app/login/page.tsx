@@ -145,7 +145,7 @@ export default function LoginPage() {
                 className={inputClass}
                 disabled={loading}
               >
-                <option value="" disabled>select your admin role</option>
+                <option value="" disabled>Select your admin role</option>
                 {ROLE_OPTIONS.map(r => (
                   <option key={r.id} value={r.id}>{r.label}</option>
                 ))}
