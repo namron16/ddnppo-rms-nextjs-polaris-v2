@@ -29,11 +29,14 @@ type JournalRecord = DailyJournalRecord & {
   status: JournalStatus
 }
 
-function formatDate(value: string) {
-  return new Date(`${value}T00:00:00`).toLocaleDateString('en-PH', {
+function formatDate(value: string | undefined) {
+  if (!value) return ''
+  return new Date(value).toLocaleDateString('en-PH', {
     month: 'short',
     day: '2-digit',
     year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
   })
 }
 
@@ -496,16 +499,8 @@ export default function DailyJournalsPage() {
                       <td className="px-4 py-3.5 align-top text-sm text-slate-600">{entry.author}</td>
                       <td className="px-4 py-3.5 align-top text-sm text-slate-600">
                         <div className="flex flex-col gap-0.5">
-                          <span>📅 {formatDate(entry.date)}</span>
-                          {entry.created_at && (
-                            <span className="text-xs">⬆️ {new Date(entry.created_at).toLocaleString('en-PH', { 
-                              year: 'numeric', 
-                              month: 'short', 
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}</span>
-                          )}
+                          <span>📅 {formatDate(entry.created_at)}</span>
+                          
                         </div>
                       </td>
                       <td className="px-4 py-3.5 align-top">

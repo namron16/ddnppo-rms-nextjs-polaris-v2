@@ -184,7 +184,7 @@ export function AddJournalEntryModal({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.txt,.csv,.md,.json,.xml,.html,.htm,.rtf,.jpg,.jpeg,.png,.webp,.gif,.bmp,.avif,.mp3,.wav,.ogg,.m4a,.flac,.mp4,.webm,.mov,.m4v,.avi"
+            accept=".pdf,.jpg,.jpeg,.png"
             className="hidden"
             onChange={e => handleFileChange(e.target.files?.[0] ?? null)}
           />
@@ -246,7 +246,7 @@ export function AddJournalEntryModal({
                 <Paperclip size={28} strokeWidth={2.1} />
               </div>
               <p className="text-sm font-medium text-slate-600 mb-0.5">Attach file</p>
-              <p className="text-xs text-slate-400">PDF, DOCX, XLSX, JPG — max 50 MB</p>
+              <p className="text-xs text-slate-400">PDF, JPG — max 50 MB</p>
             </div>
           )}
           {errors.file && <p className="text-xs text-red-500 mt-1 font-medium">⚠ {errors.file}</p>}

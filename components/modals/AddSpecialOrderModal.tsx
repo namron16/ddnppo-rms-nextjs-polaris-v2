@@ -111,8 +111,6 @@ export function AddSpecialOrderModal({ open, onClose, onAdd }: Props) {
 
   const fileIcon =
     file?.name.endsWith('.pdf') ? <FileText size={28} className="text-red-600" />
-    : file?.name.match(/\.docx?$/i) ? <FileText size={28} className="text-blue-600" />
-    : file?.name.match(/\.xlsx?$/i) ? <FileText size={28} className="text-green-600" />
     : file?.name.match(/\.(jpg|jpeg|png|webp)$/i) ? <ImageIcon size={28} className="text-violet-600" />
     : <FileText size={28} className="text-slate-600" />
 
@@ -148,17 +146,9 @@ export function AddSpecialOrderModal({ open, onClose, onAdd }: Props) {
           {errors.subject && <p className="text-xs text-red-500 mt-1 font-medium">⚠ {errors.subject}</p>}
         </div>
 
-        <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-widest text-slate-500 mb-1.5">Status</label>
-          <select className={cls('status')} value={form.status}
-            onChange={e => field('status', e.target.value)} disabled={uploading}>
-            <option>ACTIVE</option>
-            <option>ARCHIVED</option>
-          </select>
-        </div>
 
         <input ref={fileInputRef} type="file"
-          accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp"
+          accept=".pdf,.jpg,.jpeg,.png"
           className="hidden"
           onChange={e => handleFileChange(e.target.files?.[0] ?? null)} />
 
@@ -190,7 +180,7 @@ export function AddSpecialOrderModal({ open, onClose, onAdd }: Props) {
             } ${uploading ? 'pointer-events-none opacity-50' : ''}`}>
             <div className="mb-2 flex justify-center text-blue-600"><Paperclip size={30} strokeWidth={2.1} /></div>
             <p className="text-sm font-medium text-slate-600 mb-1">Click to browse or drag &amp; drop</p>
-            <p className="text-xs text-slate-400">PDF, DOCX, XLSX, JPG — max 50 MB</p>
+            <p className="text-xs text-slate-400">PDF, JPG — max 50 MB</p>
           </div>
         )}
 

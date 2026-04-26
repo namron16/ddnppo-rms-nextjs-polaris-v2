@@ -108,7 +108,7 @@ export function AddLibraryItemModal({ open, onClose }: Props) {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+          accept=".pdf,.jpg,.jpeg,.png"
           className="hidden"
           onChange={e => handleFileChange(e.target.files?.[0] ?? null)}
         />
@@ -152,7 +152,7 @@ export function AddLibraryItemModal({ open, onClose }: Props) {
           >
             <div className="text-2xl mb-1.5">📗</div>
             <p className="text-sm font-medium text-slate-600 mb-0.5">Upload file</p>
-            <p className="text-xs text-slate-400">PDF, DOCX, XLSX — max 50 MB</p>
+            <p className="text-xs text-slate-400">PDF, Jpeg, PNG — max 50 MB</p>
           </div>
         )}
 

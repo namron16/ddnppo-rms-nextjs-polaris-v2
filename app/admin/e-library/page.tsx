@@ -768,13 +768,9 @@ export default function LibraryPage() {
                       <td className="px-4 py-3.5 text-sm text-slate-500">{item.size}</td>
                       <td className="px-4 py-3.5 text-sm text-slate-500">
                         <div className="flex flex-col gap-0.5">
-                          <span>📅 {new Date(item.dateAdded).toLocaleDateString('en-PH', { 
-                            year: 'numeric', 
-                            month: 'short', 
-                            day: 'numeric' 
-                          })}</span>
+                         
                           {item.created_at && (
-                            <span className="text-xs">⬆️ {new Date(item.created_at).toLocaleString('en-PH', { 
+                            <span className="text-xs">📅 {new Date(item.created_at).toLocaleString('en-PH', { 
                               year: 'numeric', 
                               month: 'short', 
                               day: 'numeric',
