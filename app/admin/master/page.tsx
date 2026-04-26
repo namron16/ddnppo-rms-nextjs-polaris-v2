@@ -466,8 +466,6 @@ export default function MasterPage() {
 
   // Role flags
   const isP1       = user?.role === 'P1'
-  const isReviewer  = user?.role === 'DPDA' || user?.role === 'DPDO'
-  const isPD        = user?.role === 'PD'
   const isPrivileged = user ? hasFullDocumentAccess(user.role) : false
 
   useRealtimeMasterDocs({
@@ -553,11 +551,7 @@ export default function MasterPage() {
 
         if (enriched.length > 0) setSelection(enriched[0])
 
-        // Pending approvals for reviewers / PD
-        if (isReviewer || isPD) {
-          const pending = await getPendingApprovals(user!.role as AdminRole)
-          setPending(pending.filter(a => a.document_type === 'master'))
-        }
+       
       } catch (err) {
         console.error('loadAll error:', err)
       } finally {
@@ -565,7 +559,7 @@ export default function MasterPage() {
       }
     }
     loadAll()
-  }, [user, isPrivileged, isP1, isReviewer, isPD])
+  }, [user, isPrivileged, isP1])
 
   useEffect(() => {
     if (selection) {
@@ -846,14 +840,7 @@ export default function MasterPage() {
                         <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: levelColor }} />
                         <span className="flex-1 truncate text-[13px] font-medium">{doc.title}</span>
 
-                        {/* Approval status dot */}
-                        {(isP1 || isReviewer || isPD) && doc.approval && doc.approval.status !== 'approved' && (
-                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                            doc.approval.status === 'pending' ? 'bg-amber-400' :
-                            doc.approval.status === 'reviewed' ? 'bg-blue-400' :
-                            'bg-red-400'
-                          }`} />
-                        )}
+                       
 
                         {activeCount > 0 && (
                           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
@@ -945,15 +932,7 @@ export default function MasterPage() {
                           <Button variant="danger" size="sm" onClick={() => deleteDisc.open(selection.title)}>🗑️ Delete</Button>
                         </>
                       )}
-                      {/* Reviewers/PD: approval action */}
-                      {(isReviewer || isPD) && selection.approval?.status !== 'approved' && (
-                        <Button variant="primary" size="sm" onClick={() => {
-                          setActiveApproval(selection.approval ?? null)
-                          approvalModal.open()
-                        }}>
-                          {isReviewer ? '👁 Review' : '✅ Approve'}
-                        </Button>
-                      )}
+                     
                     </div>
                   </div>
 

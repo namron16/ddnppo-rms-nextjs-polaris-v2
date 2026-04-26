@@ -78,30 +78,7 @@ export async function getAccessRequestStatus(
   return data as DocumentAccessRequest | null
 }
 
-/** DPDA/DPDO reviews an access request (marks as reviewed, notifies PD) */
-export async function reviewAccessRequest(
-  requestId: string,
-  reviewerRole: 'DPDA' | 'DPDO'
-): Promise<boolean> {
-  const { data, error } = await supabase
-    .from('document_access_requests')
-    .update({ reviewed_by: reviewerRole, reviewed_at: new Date().toISOString() })
-    .eq('id', requestId)
-    .select()
-    .single()
 
-  if (error) { console.error('reviewAccessRequest error:', error.message); return false }
-
-  // Notify PD
-  await createNotification(
-    'PD',
-    `Access request reviewed by ${reviewerRole}, awaiting your approval.`,
-    'approval_request',
-    data.document_id,
-    data.document_type
-  )
-  return true
-}
 
 
 

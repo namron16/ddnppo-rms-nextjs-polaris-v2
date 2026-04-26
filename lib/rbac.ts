@@ -222,8 +222,6 @@ export async function createApproval(
 
   if (error) { console.error('createApproval error:', error.message); return null }
 
-  await createNotification('DPDA', `New document pending review: "${documentTitle}"`, 'approval_request', documentId, documentType)
-  await createNotification('DPDO', `New document pending review: "${documentTitle}"`, 'approval_request', documentId, documentType)
   return data as DocumentApproval
 }
 
@@ -242,7 +240,6 @@ export async function reviewByDPDAorDPDO(
     .eq('status',        'pending')
 
   if (error) { console.error('reviewByDPDAorDPDO error:', error.message); return false }
-  await createNotification('PD', `Document reviewed by ${reviewerRole}, awaiting final approval.`, 'approval_request', documentId, documentType)
   await createNotification('P1', `Your document has been reviewed by ${reviewerRole}.`, 'info', documentId, documentType)
   return true
 }
@@ -300,8 +297,6 @@ export async function getApproval(
 
 export async function getPendingApprovals(forRole: AdminRole): Promise<DocumentApproval[]> {
   let query = supabase.from('document_approvals').select('*')
-  if (forRole === 'DPDA' || forRole === 'DPDO') query = query.eq('status', 'pending')
-  else if (forRole === 'PD') query = query.in('status', ['pending', 'reviewed'])
 
   const { data, error } = await query.order('created_at', { ascending: false })
   if (error) return []

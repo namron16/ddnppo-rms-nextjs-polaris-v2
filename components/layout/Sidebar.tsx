@@ -23,6 +23,8 @@ const DOC_NAV: NavItem[] = [
   { label: 'Daily Journal',         icon: '📒', href: '/admin/daily-journals' },
   { label: 'Organization',          icon: '🏛️', href: '/admin/organization' },
   { label: 'e-Library',             icon: '📚', href: '/admin/e-library' },
+  { label: 'Forwarded Files', icon: '📥', href: '/admin/forwarded-files' },
+  { label: 'Archive',         icon: '🗄️', href: '/admin/archive' },
 ]
 const P2_NAV: NavItem[] = [
   { label: 'Master Documents',      icon: '📁', href: '/admin/master' },
@@ -30,7 +32,8 @@ const P2_NAV: NavItem[] = [
   { label: 'Classified Documents',  icon: '🛡️', href: '/admin/classified-documents' },
   { label: 'Organization',          icon: '🏛️', href: '/admin/organization' },
   { label: 'e-Library',             icon: '📚', href: '/admin/e-library' },
-  { label: 'Forwarded Files', icon: '📥', href: '/admin/forwarded-files' }
+  { label: 'Forwarded Files', icon: '📥', href: '/admin/forwarded-files' },
+  { label: 'Archive',         icon: '🗄️', href: '/admin/archive' },
 ]
 
 const VIEWER_NAV: NavItem[] = [
@@ -39,16 +42,15 @@ const VIEWER_NAV: NavItem[] = [
   { label: 'Daily Journal',         icon: '📒', href: '/admin/daily-journals' },
   { label: 'Organization',          icon: '🏛️', href: '/admin/organization' },
   { label: 'e-Library',             icon: '📚', href: '/admin/e-library' },
-   { label: 'Forwarded Files', icon: '📥', href: '/admin/forwarded-files' }
+   { label: 'Forwarded Files', icon: '📥', href: '/admin/forwarded-files' },
+   { label: 'Archive',         icon: '🗄️', href: '/admin/archive' },
 ]
 
 
 
 const ADMIN_NAV: NavItem[] = [
-   { label: 'Forwarded Files', icon: '📥', href: '/admin/forwarded-files' },
   { label: 'Log History',     icon: '📊', href: '/admin/log-history' },
   { label: 'User Management', icon: '👥', href: '/admin/user-management' },
-  { label: 'Archive',         icon: '🗄️', href: '/admin/archive' },
 ]
 
 function NavLink({ item, active, onNavigate, badgeCount }: {
@@ -162,7 +164,7 @@ export function Sidebar() {
     if (avatarUrl)   setLocalAvatarUrl(avatarUrl)
   }
 
-  const canSeeAdmin = user && ['PD', 'P1'].includes(user.role)
+  const isAdmin = user && ['admin'].includes(user.role)
   const canSeeP2    = user?.role === 'P2'
   const isViewerNo201 = ['P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10'].includes(user?.role ?? '')
   const isP1        = user?.role === 'P1'
@@ -248,7 +250,8 @@ export function Sidebar() {
         )}
 
         {/* ── Documents nav ── */}
-        <div className="px-3 pt-5 pb-2">
+        {!isAdmin && (
+          <div className="px-3 pt-5 pb-2">
           <div className="px-3 mb-2 text-[10px] font-bold tracking-widest uppercase text-white/30">Documents</div>
           {canSeeP2
             ? P2_NAV.map(item => (
@@ -269,12 +272,13 @@ export function Sidebar() {
                   active={pathname === item.href || pendingHref === item.href}
                   onNavigate={setPendingHref}
                   badgeCount={item.href === '/admin/inbox' && !isP1 ? unreadInboxCount : undefined} />
-              ))
+              ))  
           }
-        </div>
+          </div>
+        )}
+       
 
-        {/* ── Administration nav ── */}
-        {canSeeAdmin && (
+        {isAdmin && (
           <div className="px-3 pt-3 pb-2">
             <div className="px-3 mb-2 text-[10px] font-bold tracking-widests uppercase text-white/30">Administration</div>
             {ADMIN_NAV.map(item => (

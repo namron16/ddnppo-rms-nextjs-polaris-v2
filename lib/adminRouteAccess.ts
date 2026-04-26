@@ -1,6 +1,4 @@
-export type SessionRole =
-  | 'PD' | 'DPDA' | 'DPDO'
-  | 'P1' | 'P2' | 'P3' | 'P4' | 'P5' | 'P6' | 'P7' | 'P8' | 'P9' | 'P10'
+export type SessionRole = 'admin' | 'P1' | 'P2' | 'P3' | 'P4' | 'P5' | 'P6' | 'P7' | 'P8' | 'P9' | 'P10'
 
 const DOC_ROUTES = [
   '/admin/master',
@@ -10,6 +8,7 @@ const DOC_ROUTES = [
   '/admin/organization',
   '/admin/e-library',
   '/admin/forwarded-files',
+  '/admin/archive',
 ] as const
 
 const VIEWER_DOC_ROUTES = [
@@ -19,6 +18,7 @@ const VIEWER_DOC_ROUTES = [
   '/admin/organization',
   '/admin/e-library',
   '/admin/forwarded-files',
+  '/admin/archive',
 ] as const
 
 const P2_DOC_ROUTES = [
@@ -28,21 +28,19 @@ const P2_DOC_ROUTES = [
   '/admin/organization',
   '/admin/e-library',
   '/admin/forwarded-files',
+  '/admin/archive',
 ] as const
 
 const ADMIN_ROUTES = [
   '/admin/log-history',
   '/admin/user-management',
-  '/admin/archive',
-  '/admin/forwarded-files',
+  
 ] as const
 
 const P1_ONLY_ROUTES: readonly string[] = []
 
 const ROLE_DEFAULT_ROUTE: Record<SessionRole, string> = {
-  PD: '/admin/master',
-  DPDA: '/admin/master',
-  DPDO: '/admin/master',
+  admin: '/admin/master',
   P1: '/admin/master',
   P2: '/admin/master',
   P3: '/admin/master',
@@ -70,7 +68,7 @@ export function getAllowedAdminRoutes(role: SessionRole): string[] {
     : viewerRoles.includes(role as typeof viewerRoles[number])
       ? [...VIEWER_DOC_ROUTES]
       : [...DOC_ROUTES]
-  const admin = role === 'PD' || role === 'P1' ? [...ADMIN_ROUTES] : []
+  const admin = role === 'admin' ? [...ADMIN_ROUTES] : []
   const p1Only = role === 'P1' ? [...P1_ONLY_ROUTES] : []
   return uniqueRoutes([...docs, ...admin, ...p1Only])
 }
