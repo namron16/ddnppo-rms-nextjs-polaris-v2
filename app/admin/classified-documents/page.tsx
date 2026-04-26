@@ -609,13 +609,9 @@ export default function ClassifiedDocumentsPage() {
                         </td>
                         <td className="px-5 py-4 align-top text-sm text-slate-600">
                           <div className="flex flex-col gap-0.5">
-                            <span>📅 {new Date(doc.date).toLocaleDateString('en-PH', { 
-                              year: 'numeric', 
-                              month: 'short', 
-                              day: 'numeric' 
-                            })}</span>
+                            
                             {doc.created_at && (
-                              <span className="text-xs">⬆️ {new Date(doc.created_at).toLocaleString('en-PH', { 
+                              <span className="text-xs">📅 {new Date(doc.created_at).toLocaleString('en-PH', { 
                                 year: 'numeric', 
                                 month: 'short', 
                                 day: 'numeric',
