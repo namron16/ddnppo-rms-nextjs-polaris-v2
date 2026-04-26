@@ -93,12 +93,29 @@ ddnppo-rms-nextjs/
 # 1. Install dependencies
 npm install
 
-# 2. Start the dev server
+# 2. Create a local env file
+cp .env.example .env.local
+# then update the values with your Supabase project settings
+
+# 3. Start the dev server
 npm run dev
 
-# 3. Open in browser
+# 4. Open in browser
 open http://localhost:3000
 ```
+
+---
+
+## ⚙️ Environment Variables
+
+Create `.env.local` with the following values:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+If you already have `env.download`, copy its values into `.env.local` instead of committing them to source control.
 
 ---
 
