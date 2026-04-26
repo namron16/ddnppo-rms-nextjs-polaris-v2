@@ -30,7 +30,7 @@ const P2_NAV: NavItem[] = [
   { label: 'Classified Documents',  icon: '🛡️', href: '/admin/classified-documents' },
   { label: 'Organization',          icon: '🏛️', href: '/admin/organization' },
   { label: 'e-Library',             icon: '📚', href: '/admin/e-library' },
-  { label: 'Inbox', icon: '📥', href: '/admin/inbox' }
+  { label: 'Forwarded Files', icon: '📥', href: '/admin/forwarded-files' }
 ]
 
 const VIEWER_NAV: NavItem[] = [
@@ -39,11 +39,13 @@ const VIEWER_NAV: NavItem[] = [
   { label: 'Daily Journal',         icon: '📒', href: '/admin/daily-journals' },
   { label: 'Organization',          icon: '🏛️', href: '/admin/organization' },
   { label: 'e-Library',             icon: '📚', href: '/admin/e-library' },
-  { label: 'Inbox', icon: '📥', href: '/admin/inbox' }
+   { label: 'Forwarded Files', icon: '📥', href: '/admin/forwarded-files' }
 ]
 
+
+
 const ADMIN_NAV: NavItem[] = [
-  { label: 'Inbox', icon: '📥', href: '/admin/inbox' },
+   { label: 'Forwarded Files', icon: '📥', href: '/admin/forwarded-files' },
   { label: 'Log History',     icon: '📊', href: '/admin/log-history' },
   { label: 'User Management', icon: '👥', href: '/admin/user-management' },
   { label: 'Archive',         icon: '🗄️', href: '/admin/archive' },

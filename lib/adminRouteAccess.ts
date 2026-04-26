@@ -9,7 +9,7 @@ const DOC_ROUTES = [
   '/admin/daily-journals',
   '/admin/organization',
   '/admin/e-library',
-  '/admin/inbox',
+  '/admin/forwarded-files',
 ] as const
 
 const VIEWER_DOC_ROUTES = [
@@ -18,7 +18,7 @@ const VIEWER_DOC_ROUTES = [
   '/admin/daily-journals',
   '/admin/organization',
   '/admin/e-library',
-  '/admin/inbox',
+  '/admin/forwarded-files',
 ] as const
 
 const P2_DOC_ROUTES = [
@@ -27,14 +27,14 @@ const P2_DOC_ROUTES = [
   '/admin/classified-documents',
   '/admin/organization',
   '/admin/e-library',
-  '/admin/inbox',
+  '/admin/forwarded-files',
 ] as const
 
 const ADMIN_ROUTES = [
   '/admin/log-history',
   '/admin/user-management',
   '/admin/archive',
-  '/admin/inbox',
+  '/admin/forwarded-files',
 ] as const
 
 const P1_ONLY_ROUTES: readonly string[] = []
