@@ -770,6 +770,20 @@ export default function MasterPage() {
     return (attachmentsMap.get(selection.id) ?? []).filter(a => !a.parent_attachment_id)
   }, [selection, attachmentsMap, currentAttachmentEntry])
 
+  const filteredCurrentAttachments = useMemo((): DocAttachment[] => {
+    const q = query.trim().toLowerCase()
+    if (!q) return currentAttachments
+
+    const searchNested = (parentId: string): boolean => {
+      const items = attachmentsMap.get(parentId) ?? []
+      return items.some(att => att.file_name.toLowerCase().includes(q) || searchNested(att.id))
+    }
+
+    return currentAttachments.filter(att =>
+      att.file_name.toLowerCase().includes(q) || searchNested(att.id)
+    )
+  }, [currentAttachments, query, attachmentsMap])
+
   const currentParentAttachment = currentAttachmentEntry?.kind === 'attachment'
     ? currentAttachmentEntry.att
     : null
@@ -811,7 +825,7 @@ export default function MasterPage() {
 
           {/* Toolbar */}
           <div className="flex items-center gap-2.5 px-6 py-4 border-b border-slate-100 bg-slate-50 flex-shrink-0">
-            <SearchInput value={query} onChange={setQuery} placeholder="Search documents…" className="max-w-xs flex-1" />
+            <SearchInput value={query} onChange={setQuery} placeholder="Search documents and attachments…" className="max-w-xs flex-1" />
             <ToolbarSelect defaultValue="ALL" onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setLevel(e.target.value as DocLevel | 'ALL')}>
               <option value="ALL">All Levels</option>
               <option value="REGIONAL">Regional</option>
@@ -1103,8 +1117,8 @@ export default function MasterPage() {
                     )}
 
                     {(() => {
-                      const activeAttachments = currentAttachments.filter(a => !a.archived)
-                      const archivedAttachments = currentAttachments.filter(a => a.archived)
+                      const activeAttachments = filteredCurrentAttachments.filter(a => !a.archived)
+                      const archivedAttachments = filteredCurrentAttachments.filter(a => a.archived)
                       const displayed = showArchivedAttachments ? archivedAttachments : activeAttachments
 
                       if (displayed.length === 0) {
@@ -1233,7 +1247,8 @@ export default function MasterPage() {
                                         month: 'short', 
                                         day: 'numeric',
                                         hour: '2-digit',
-                                        minute: '2-digit'
+                                        minute: '2-digit',
+                                        second: '2-digit'
                                       })}
                                     </td>
                                     <td className="px-4 py-3 text-xs text-slate-500">{att.uploaded_by}</td>

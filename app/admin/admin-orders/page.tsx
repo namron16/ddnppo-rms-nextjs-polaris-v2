@@ -592,15 +592,15 @@ function AttachmentsTablePanel({
                   month: 'short', 
                   day: 'numeric',
                   hour: '2-digit',
-                  minute: '2-digit'
+                  minute: '2-digit',
+                  second: '2-digit'
                 })}
               </span>
             </div>
           )}
           {!isDrillDown && currentOrder && (
             <div className="flex items-center gap-2 flex-wrap mt-1">
-              <span className="text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-medium">📅 {new Date(currentOrder.date).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric',  hour: '2-digit',
-                  minute: '2-digit' })}</span>
+              <span className="text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-medium">📅 {new Date(currentOrder.date).toLocaleString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
               <Badge className={statusBadgeClass(currentOrder.status)}>{currentOrder.status}</Badge>
             </div>
           )}
