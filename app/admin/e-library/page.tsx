@@ -28,6 +28,9 @@ import { supabase }              from '@/lib/supabase'
 import { libraryBadgeClass }     from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 import type { AdminRole } from '@/lib/auth'
+import {
+  canUploadDocuments, canEditDocuments, canDeleteDocuments, canArchiveDocuments,
+} from '@/lib/permissions'
 import { isDocumentUnrestricted } from '@/lib/rbac'
 import type { LibraryItem, LibraryCategory } from '@/types'
 
@@ -576,6 +579,11 @@ export default function LibraryPage() {
   const canUploadLibrary = user?.permissions.canUpload ?? false
   const isSuperAdmin = user?.role === 'P1'
 
+  // Permission flags
+  const canEdit = user?.role ? canEditDocuments(user.role) : false
+  const canDelete = user?.role ? canDeleteDocuments(user.role) : false
+  const canArchive = user?.role ? canArchiveDocuments(user.role) : false
+
   const newModal    = useModal()
   const viewDisc    = useDisclosure<LibraryItemWithUrl>()
   const editDisc    = useDisclosure<LibraryItemWithUrl>()
@@ -611,8 +619,8 @@ export default function LibraryPage() {
   }
 
   async function handleArchive() {
-    if (!isSuperAdmin) {
-      toast.error('Only P1 can archive e-Library items.')
+    if (!canArchive) {
+      toast.error('You do not have permission to archive e-Library items.')
       return
     }
 
@@ -638,8 +646,8 @@ export default function LibraryPage() {
   }
 
   async function handleSave(updated: LibraryItemWithUrl) {
-    if (!isSuperAdmin) {
-      toast.error('Only Super Admin can edit e-Library items.')
+    if (!canEdit) {
+      toast.error('You do not have permission to edit e-Library items.')
       return
     }
 
@@ -655,8 +663,8 @@ export default function LibraryPage() {
   async function handleDelete() {
     const item = deleteDisc.payload
     if (!item) return
-    if (!isSuperAdmin) {
-      toast.error('Only Super Admin (P1) can delete e-Library items.')
+    if (!canDelete) {
+      toast.error('You do not have permission to delete e-Library items.')
       return
     }
 

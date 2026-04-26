@@ -31,6 +31,9 @@ import { logDeleteDocument, logViewDocument }      from '@/lib/adminLogger'
 import { useAuth } from '@/lib/auth'
 import type { AdminRole } from '@/lib/auth'
 import { useRealtimeSpecialOrders } from '@/hooks/useRealtimeSpecialOrders'
+import {
+  canUploadDocuments, canEditDocuments, canDeleteDocuments, canArchiveDocuments,
+} from '@/lib/permissions'
 import type { SpecialOrder }    from '@/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -1024,6 +1027,12 @@ export default function AdminOrdersPage() {
 
   const isSuperAdmin = user?.role === 'P1'
 
+  // Permission flags
+  const canUpload = user?.role ? canUploadDocuments(user.role) : false
+  const canEdit = user?.role ? canEditDocuments(user.role) : false
+  const canDelete = user?.role ? canDeleteDocuments(user.role) : false
+  const canArchive = user?.role ? canArchiveDocuments(user.role) : false
+
   const [orders,         setOrders]         = useState<SOWithUrl[]>([])
   const [query,          setQuery]          = useState('')
   const [statusFilter,   setStatusFilter]   = useState('ALL')
@@ -1123,8 +1132,8 @@ export default function AdminOrdersPage() {
   }
 
   async function handleUpload(parentOrderId: string, parentAttId: string | null, files: FileList) {
-    if (!isSuperAdmin) {
-      toast.error('Only P1 can upload attachments to Admin Orders.')
+    if (!canUpload) {
+      toast.error('You do not have permission to upload attachments to Admin Orders.')
       return
     }
 
@@ -1174,8 +1183,8 @@ export default function AdminOrdersPage() {
   }
 
   async function handleAdd(newSO: SOWithUrl) {
-    if (!isSuperAdmin) {
-      toast.error('Only P1 can add Admin Orders.')
+    if (!canUpload) {
+      toast.error('You do not have permission to add Admin Orders.')
       return
     }
 
@@ -1187,8 +1196,8 @@ export default function AdminOrdersPage() {
   }
 
   async function handleArchiveOrder() {
-    if (!isSuperAdmin) {
-      toast.error('Only P1 can archive Admin Orders.')
+    if (!canArchive) {
+      toast.error('You do not have permission to archive Admin Orders.')
       return
     }
 
@@ -1213,8 +1222,8 @@ export default function AdminOrdersPage() {
   async function handleDeleteOrder() {
     const so = deleteDisc.payload
     if (!so) return
-    if (!isSuperAdmin) {
-      toast.error('Only Super Admin (P1) can delete Admin Orders.')
+    if (!canDelete) {
+      toast.error('You do not have permission to delete Admin Orders.')
       return
     }
 
@@ -1230,8 +1239,8 @@ export default function AdminOrdersPage() {
   }
 
   async function handleSaveOrder(updatedOrder: SOWithUrl) {
-    if (!isSuperAdmin) {
-      toast.error('Only Super Admin can edit Admin Orders.')
+    if (!canEdit) {
+      toast.error('You do not have permission to edit Admin Orders.')
       return
     }
 

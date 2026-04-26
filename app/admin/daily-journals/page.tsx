@@ -20,6 +20,9 @@ import type { AddJournalEntryInput } from '@/lib/validations'
 import type { JournalEntry } from '@/types'
 import { addArchivedDoc, addDailyJournal, archiveDailyJournal, deleteDailyJournal, getDailyJournals, updateDailyJournal, type DailyJournalRecord } from '@/lib/data'
 import { supabase } from '@/lib/supabase'
+import {
+  canUploadDocuments, canEditDocuments, canDeleteDocuments, canArchiveDocuments,
+} from '@/lib/permissions'
 
 type JournalStatus = 'Draft' | 'Filed' | 'Reviewed'
 
@@ -202,6 +205,12 @@ export default function DailyJournalsPage() {
   const { toast } = useToast()
   const { user } = useAuth()
   const isSuperAdmin = user?.role === 'P1'
+
+  // Permission flags
+  const canUpload = user?.role ? canUploadDocuments(user.role) : false
+  const canEdit = user?.role ? canEditDocuments(user.role) : false
+  const canDelete = user?.role ? canDeleteDocuments(user.role) : false
+  const canArchive = user?.role ? canArchiveDocuments(user.role) : false
   const addModal = useModal()
   const editDisc = useDisclosure<JournalRecord>()
   const viewDisc = useDisclosure<JournalRecord>()
@@ -260,8 +269,8 @@ export default function DailyJournalsPage() {
   }, [])
 
   async function handleCreate(input: AddJournalEntryInput & { file?: File }) {
-    if (!isSuperAdmin) {
-      throw new Error('Only P1 can create journal entries.')
+    if (!canUpload) {
+      throw new Error('You do not have permission to create journal entries.')
     }
 
     if (!input.file) {
@@ -303,8 +312,8 @@ export default function DailyJournalsPage() {
   }
 
     async function handleEdit(input: AddJournalEntryInput & { file?: File }) {
-      if (!isSuperAdmin) {
-        throw new Error('Only P1 can edit journal entries.')
+      if (!canEdit) {
+        throw new Error('You do not have permission to edit journal entries.')
       }
 
       const existing = editDisc.payload
@@ -349,8 +358,8 @@ export default function DailyJournalsPage() {
     }
 
     async function handleArchive() {
-      if (!isSuperAdmin) {
-        toast.error('Only P1 can archive journal entries.')
+      if (!canArchive) {
+        toast.error('You do not have permission to archive journal entries.')
         return
       }
 
@@ -379,8 +388,8 @@ export default function DailyJournalsPage() {
     async function handleDelete() {
       const item = deleteDisc.payload
       if (!item) return
-      if (!isSuperAdmin) {
-        toast.error('Only Super Admin (P1) can delete journal entries.')
+      if (!canDelete) {
+        toast.error('You do not have permission to delete journal entries.')
         return
       }
 

@@ -21,19 +21,19 @@ export const ROLE_META: Record<AdminRole, { name: string; level: 'head' | 'deput
 }
 
 export function canUploadDocuments(role: AdminRole): boolean {
-  return role === 'P1'
+  return ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10'].includes(role)
 }
 
 export function canEditDocuments(role: AdminRole): boolean {
-  return role === 'P1'
+  return ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10'].includes(role)
 }
 
 export function canDeleteDocuments(role: AdminRole): boolean {
-  return role === 'P1'
+  return ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10'].includes(role)
 }
 
 export function canArchiveDocuments(role: AdminRole): boolean {
-  return role === 'P1'
+  return ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10'].includes(role)
 }
 
 export function canForwardDocuments(role: AdminRole): boolean {

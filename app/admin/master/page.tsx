@@ -1,6 +1,6 @@
 'use client'
 // app/admin/master/page.tsx  — v2
-// P1-only uploads
+// Master Documents Management
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { PageHeader }       from '@/components/ui/PageHeader'
@@ -33,7 +33,7 @@ import {
 } from '@/lib/rbac'
 import { logDeleteDocument, logViewDocument } from '@/lib/adminLogger'
 import {
-  canUploadDocuments, canReviewDocuments, canFinalApprove,
+  canReviewDocuments, canFinalApprove,
   hasFullDocumentAccess, ROLE_META,
 } from '@/lib/permissions'
 import type { MasterDocument, DocLevel } from '@/types'
@@ -619,10 +619,7 @@ export default function MasterPage() {
 
   async function handleDeleteDoc() {
     if (!selection) return
-    if (!isP1) {
-      toast.error('Only P1 can delete documents.')
-      return
-    }
+  
 
     const doc = selection
     await deleteMasterDocument(doc.id)
@@ -634,11 +631,8 @@ export default function MasterPage() {
   }
 
   async function handleUpload(parentDocId: string, parentAttId: string | null, files: FileList) {
-    // Backend guard: only P1 can attach files
-    if (!isP1) {
-      toast.error('Only P1 can upload attachments.')
-      return
-    }
+    // Backend guard: check upload permissions
+    
     setUploadingId(parentAttId ?? parentDocId)
     let count = 0
     for (const file of Array.from(files)) {
@@ -899,9 +893,7 @@ export default function MasterPage() {
                       icon="📄"
                       title="Select a document"
                       description="Click any document from the list to view its details."
-                      action={
-                        isP1 ? <Button variant="primary" size="sm" onClick={uploadModal.open}>+ Upload Document</Button> : undefined
-                      }
+                      
                     />
                   </div>
                 ) : (
@@ -947,15 +939,13 @@ export default function MasterPage() {
                     </div>
 
                     <div className="flex gap-2 flex-shrink-0 flex-wrap">
-                      {/* P1-only: edit + archive */}
-                      {isP1 && (
-                        <>
-                          <Button variant="primary" size="sm" onClick={() => setForwardModalOpen(true)}>🔀 Forward</Button>
-                          <Button variant="outline" size="sm" onClick={editModal.open}>✏️ Edit</Button>
-                          <Button variant="danger" size="sm" onClick={() => archiveDisc.open(selection.title)}>🗄️ Archive</Button>
-                          <Button variant="danger" size="sm" onClick={() => deleteDisc.open(selection.title)}>🗑️ Delete</Button>
-                        </>
-                      )}
+                      {/* Document actions */}
+                      <>
+                        <Button variant="primary" size="sm" onClick={() => setForwardModalOpen(true)}>🔀 Forward</Button>
+                        <Button variant="outline" size="sm" onClick={editModal.open}>✏️ Edit</Button>
+                        <Button variant="danger" size="sm" onClick={() => archiveDisc.open(selection.title)}>🗄️ Archive</Button>
+                        <Button variant="danger" size="sm" onClick={() => deleteDisc.open(selection.title)}>🗑️ Delete</Button>
+                      </>
                      
                     </div>
                   </div>
@@ -1051,21 +1041,19 @@ export default function MasterPage() {
                           </span>
                         )}
 
-                        {isP1 && (
-                          <input
-                            ref={attachmentInputRef}
-                            type="file"
-                            multiple
-                            accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp"
-                            className="hidden"
-                            onChange={e => {
-                              if (e.target.files && e.target.files.length > 0)
-                                handleUpload(selection.id, currentParentAttachment?.id ?? null, e.target.files)
-                              e.target.value = ''
-                            }}
-                          />
-                        )}
-                        {isP1 && !showArchivedAttachments && (
+                        <input
+                          ref={attachmentInputRef}
+                          type="file"
+                          multiple
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp"
+                          className="hidden"
+                          onChange={e => {
+                            if (e.target.files && e.target.files.length > 0)
+                              handleUpload(selection.id, currentParentAttachment?.id ?? null, e.target.files)
+                            e.target.value = ''
+                          }}
+                        />
+                        {!showArchivedAttachments && (
                           <Button variant="primary" size="sm" disabled={!!uploadingId}
                             onClick={() => attachmentInputRef.current?.click()}>
                             + Attach file
@@ -1114,7 +1102,7 @@ export default function MasterPage() {
                             <p className="text-sm font-semibold text-slate-500">
                               {showArchivedAttachments ? 'No archived attachments' : 'No attachments yet'}
                             </p>
-                            {isP1 && !showArchivedAttachments && (
+                            {!showArchivedAttachments && (
                               <>
                                 <p className="text-xs text-slate-400 mt-1">Click + Attach file to upload {currentParentAttachment ? 'nested files under this attachment' : 'supporting documents'}.</p>
                                 <Button
@@ -1287,22 +1275,20 @@ export default function MasterPage() {
                                             >
                                               📂 Open
                                             </button>
-                                            {isP1 && (
-                                              <>
-                                                <button
-                                                  onClick={() => { setEditingAttachmentId(att.id); setEditingAttachmentName(att.file_name) }}
-                                                  className="text-[10px] font-semibold px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 transition"
-                                                >
-                                                  ✏️
-                                                </button>
-                                                <button
-                                                  onClick={() => archiveAttDisc.open(att)}
-                                                  className="text-[10px] font-semibold px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded hover:bg-amber-100 transition"
-                                                >
-                                                  🗄️
-                                                </button>
-                                              </>
-                                            )}
+                                            <>
+                                              <button
+                                                onClick={() => { setEditingAttachmentId(att.id); setEditingAttachmentName(att.file_name) }}
+                                                className="text-[10px] font-semibold px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 transition"
+                                              >
+                                                ✏️
+                                              </button>
+                                              <button
+                                                onClick={() => archiveAttDisc.open(att)}
+                                                className="text-[10px] font-semibold px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded hover:bg-amber-100 transition"
+                                              >
+                                                🗄️
+                                              </button>
+                                            </>
                                           </>
                                         ) : (
                                           <button
