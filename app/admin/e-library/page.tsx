@@ -127,6 +127,7 @@ function AddLibraryItemModal({
       }
 
       const today   = new Date().toISOString().split('T')[0]
+      const now     = new Date().toISOString()
       const newItem: LibraryItemWithUrl = {
         id:          `lib-${Date.now()}`,
         title:       form.title.trim(),
@@ -135,6 +136,7 @@ function AddLibraryItemModal({
         dateAdded:   today,
         fileUrl,
         description: form.description.trim() || undefined,
+        created_at:  now,
       }
 
       await addLibraryItem(newItem)
@@ -467,6 +469,7 @@ function EditLibraryItemModal({
               category: form.category,
               description: form.description.trim() || undefined,
               dateAdded: form.dateAdded,
+              created_at: item.created_at,
             })}
             disabled={!form.title.trim() || !form.dateAdded}
           >

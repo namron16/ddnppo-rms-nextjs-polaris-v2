@@ -71,28 +71,6 @@ export function useRealtimeSpecialOrders({ setOrders, setAttachmentsMap, user, i
   useEffect(() => { setOrdersRef.current = setOrders }, [setOrders])
   useEffect(() => { setAttsRef.current = setAttachmentsMap }, [setAttachmentsMap])
 
-  // Initial load
-  useEffect(() => {
-    const loadInitialOrders = async () => {
-      const query = supabase
-        .from('special_orders')
-        .select('*')
-        .neq('status', 'ARCHIVED')
-        .order('created_at', { ascending: false })
-
-      const { data, error } = await query
-      if (error) {
-        console.error('Error loading special orders:', error)
-        return
-      }
-
-      const orders = (data ?? []).map(normaliseOrder)
-      setOrdersRef.current(orders)
-    }
-
-    loadInitialOrders()
-  }, [user, isP1])
-
   useEffect(() => {
     // ── Orders ─────────────────────────────────────
     const ordersChannel = supabase
