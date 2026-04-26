@@ -110,16 +110,7 @@ export default function LoginPage() {
       <div className="w-[500px] bg-white px-12 py-10 flex flex-col relative shadow-2xl z-20">
         
         <div className="flex-1 flex flex-col justify-center items-center w-full">
-          {/* Top Centered Logo */}
-          <Image
-            src="/assets/police-regional-logo.png"
-            alt="PNP Logo"
-            width={64}
-            height={64}
-            priority
-            sizes="64px"
-            className="w-16 h-16 mb-4 object-contain"
-          />
+         
           
           <div className="text-center mb-10 w-full">
             <h2 className="font-serif text-[2.5rem] text-[#1b365d] font-bold mb-2 flex items-center justify-center gap-3">
