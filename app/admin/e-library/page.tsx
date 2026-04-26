@@ -766,7 +766,24 @@ export default function LibraryPage() {
                         <Badge className={libraryBadgeClass(item.category)}>{item.category}</Badge>
                       </td>
                       <td className="px-4 py-3.5 text-sm text-slate-500">{item.size}</td>
-                      <td className="px-4 py-3.5 text-sm text-slate-500">{item.dateAdded}</td>
+                      <td className="px-4 py-3.5 text-sm text-slate-500">
+                        <div className="flex flex-col gap-0.5">
+                          <span>📅 {new Date(item.dateAdded).toLocaleDateString('en-PH', { 
+                            year: 'numeric', 
+                            month: 'short', 
+                            day: 'numeric' 
+                          })}</span>
+                          {item.created_at && (
+                            <span className="text-xs">⬆️ {new Date(item.created_at).toLocaleString('en-PH', { 
+                              year: 'numeric', 
+                              month: 'short', 
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-1">
                           <Button

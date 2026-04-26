@@ -288,9 +288,21 @@ function InboxItemCard({
 
           <div className="text-sm text-slate-600 mb-2">
             {isP1 ? (
-              <>Sent to {item.recipient_id} • {itemDate ? new Date(itemDate).toLocaleDateString() : '—'}</>
+              <>Sent to {item.recipient_id} • {itemDate ? new Date(itemDate).toLocaleString('en-PH', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              }) : '—'}</>
             ) : (
-              <>From {item.sender_id} • {itemDate ? new Date(itemDate).toLocaleDateString() : '—'}</>
+              <>From {item.sender_id} • {itemDate ? new Date(itemDate).toLocaleString('en-PH', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              }) : '—'}</>
             )}
           </div>
 

@@ -587,13 +587,20 @@ function AttachmentsTablePanel({
               <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full font-medium">{drillFi?.label}</span>
               <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full font-medium">{drillAtt.file_size}</span>
               <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full font-medium">
-                📅 {new Date(drillAtt.uploaded_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}
+                📅 {new Date(drillAtt.uploaded_at).toLocaleString('en-PH', { 
+                  year: 'numeric', 
+                  month: 'short', 
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
               </span>
             </div>
           )}
           {!isDrillDown && currentOrder && (
             <div className="flex items-center gap-2 flex-wrap mt-1">
-              <span className="text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-medium">📅 {currentOrder.date}</span>
+              <span className="text-xs text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-medium">📅 {new Date(currentOrder.date).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric',  hour: '2-digit',
+                  minute: '2-digit' })}</span>
               <Badge className={statusBadgeClass(currentOrder.status)}>{currentOrder.status}</Badge>
             </div>
           )}
@@ -876,7 +883,13 @@ function AttachmentsTablePanel({
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-500">{att.file_size}</td>
                       <td className="px-4 py-3 text-xs text-slate-500">
-                        {new Date(att.uploaded_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}
+                        {new Date(att.uploaded_at).toLocaleString('en-PH', { 
+                          year: 'numeric', 
+                          month: 'short', 
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-500">{att.uploaded_by}</td>
                       <td className="px-4 py-3">
@@ -1455,14 +1468,7 @@ export default function AdminOrdersPage() {
               ) : (
                 <div className="space-y-4">
                   {/* Order header for P1 */}
-                  {currentEntry.kind === 'order' && isSuperAdmin && (
-                    <div>
-                      <div>
-                        <h3 className="text-lg font-semibold text-slate-900">{currentEntry.order.subject}</h3>
-                        <p className="text-sm text-slate-600">{currentEntry.order.reference}</p>
-                      </div>
-                    </div>
-                  )}
+                 
 
                   <AttachmentsTablePanel
                     navStack={navStack}

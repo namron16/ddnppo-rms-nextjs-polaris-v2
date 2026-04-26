@@ -30,6 +30,7 @@ export interface MasterDocument {
   type: string
   size: string
   tag: string
+  created_at?: string
   taggedAdminAccess?: string[] // Baseline admin roles with permanent access (e.g., ['P2', 'P3', 'P5'])
   children?: MasterDocument[]
 }
@@ -41,6 +42,7 @@ export interface SpecialOrder {
   date: string
   attachments: number
   status: DocStatus
+  created_at?: string
 }
 
 export interface JournalEntry {
@@ -57,6 +59,7 @@ export interface ConfidentialDoc {
   classification: DocClassification
   date: string
   access: string
+  created_at?: string
 }
 
 export interface LibraryItem {
@@ -65,6 +68,7 @@ export interface LibraryItem {
   category: LibraryCategory
   size: string
   dateAdded: string
+  created_at?: string
 }
 
 export interface ActivityLog {

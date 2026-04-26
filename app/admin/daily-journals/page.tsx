@@ -494,7 +494,20 @@ export default function DailyJournalsPage() {
                         <Badge className={typeBadgeClass(entry.type)}>{entry.type}</Badge>
                       </td>
                       <td className="px-4 py-3.5 align-top text-sm text-slate-600">{entry.author}</td>
-                      <td className="px-4 py-3.5 align-top text-sm text-slate-600">{formatDate(entry.date)}</td>
+                      <td className="px-4 py-3.5 align-top text-sm text-slate-600">
+                        <div className="flex flex-col gap-0.5">
+                          <span>📅 {formatDate(entry.date)}</span>
+                          {entry.created_at && (
+                            <span className="text-xs">⬆️ {new Date(entry.created_at).toLocaleString('en-PH', { 
+                              year: 'numeric', 
+                              month: 'short', 
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3.5 align-top">
                         <Badge className={statusBadgeClass(entry.status)}>{entry.status}</Badge>
                       </td>

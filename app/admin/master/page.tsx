@@ -43,6 +43,7 @@ import type { AdminRole } from '@/lib/auth'
 type DocWithUrl = MasterDocument & { fileUrl?: string }
 type DocEnriched = DocWithUrl & {
   approval?: DocumentApproval | null
+  created_at?: string
 }
 
 type AttachmentNavEntry =
@@ -787,22 +788,6 @@ export default function MasterPage() {
 
       <div className="p-6 flex flex-col gap-5 flex-1" style={{ height: 'calc(100vh - 56px)' }}>
 
-        {/* Pending approvals banner */}
-        {(isReviewer || isPD) && pendingApprovals.length > 0 && (
-          <div className="bg-amber-50 border border-amber-300 rounded-xl px-5 py-3.5 flex items-center gap-3">
-            <span className="text-amber-500 text-lg flex-shrink-0">📋</span>
-            <p className="text-sm text-amber-800 font-semibold flex-1">
-              {pendingApprovals.length} master document{pendingApprovals.length > 1 ? 's' : ''} awaiting your {isReviewer ? 'review' : 'final approval'}
-            </p>
-            <Button variant="primary" size="sm" onClick={() => {
-              const first = pendingApprovals[0]
-              const doc = documents.find(d => d.id === first.document_id)
-              if (doc) { setSelection(doc); setActiveApproval(first); approvalModal.open() }
-            }}>
-              Review Now
-            </Button>
-          </div>
-        )}
 
         <div className="bg-white border-[1.5px] border-slate-200 rounded-xl overflow-hidden flex flex-col flex-1 min-h-0">
 
@@ -935,7 +920,17 @@ export default function MasterPage() {
                         <Badge className={levelBadgeClass(selection.level)}>{selection.level}</Badge>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap text-xs text-slate-500">
-                        <span className="bg-slate-100 px-2 py-0.5 rounded-full">📅 {selection.date}</span>
+                        {selection.created_at && (
+                          <span className="bg-slate-100 px-2 py-0.5 rounded-full">
+                             📅 {new Date(selection.created_at).toLocaleString('en-PH', { 
+                              year: 'numeric', 
+                              month: 'short', 
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                        )}
                         <span className="bg-slate-100 px-2 py-0.5 rounded-full">{selection.type} · {selection.size}</span>
                       </div>
                     </div>
@@ -1228,7 +1223,13 @@ export default function MasterPage() {
                                     </td>
                                     <td className="px-4 py-3 text-xs text-slate-500">{att.file_size}</td>
                                     <td className="px-4 py-3 text-xs text-slate-500">
-                                      {new Date(att.uploaded_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                      {new Date(att.uploaded_at).toLocaleString('en-PH', { 
+                                        year: 'numeric', 
+                                        month: 'short', 
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })}
                                     </td>
                                     <td className="px-4 py-3 text-xs text-slate-500">{att.uploaded_by}</td>
                                     <td className="px-4 py-3">

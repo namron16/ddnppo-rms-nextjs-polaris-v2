@@ -194,8 +194,6 @@ export function AddDocumentModal({ open, onClose, onAdd }: AddDocumentModalProps
             <label className="block text-[11px] font-semibold uppercase tracking-widests text-slate-500 mb-1.5">File Type</label>
             <select className={cls('type')} value={form.type} onChange={e => handleChange('type', e.target.value)} disabled={uploading}>
               <option value="PDF">PDF</option>
-              <option value="DOCX">DOCX</option>
-              <option value="XLSX">XLSX</option>
               <option value="Image">Image</option>
             </select>
           </div>
@@ -204,7 +202,7 @@ export function AddDocumentModal({ open, onClose, onAdd }: AddDocumentModalProps
        
         {/* File upload */}
         <input ref={fileInputRef} type="file"
-          accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp"
+          accept=".pdf,.jpg,.jpeg,.png"
           className="hidden"
           onChange={e => handleFileChange(e.target.files?.[0] ?? null)} />
 

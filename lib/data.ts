@@ -15,6 +15,7 @@ export type DailyJournalRecord = JournalEntry & {
   status: DailyJournalStatus
   attachments: number
   archived?: boolean
+  created_at?: string
 }
 
 /* ════════════════════════════════════════════
@@ -36,6 +37,7 @@ export async function getMasterDocuments(): Promise<(MasterDocument & { fileUrl?
   return (data ?? []).map(d => ({
     id: d.id, title: d.title, level: d.level, type: d.type,
     date: d.date, size: d.size, tag: d.tag, fileUrl: d.file_url ?? undefined,
+    created_at: d.created_at,
     taggedAdminAccess: Array.isArray(d.tagged_admin_access) ? d.tagged_admin_access : undefined,
   }))
 }
@@ -80,6 +82,7 @@ export async function getSpecialOrders(): Promise<(SpecialOrder & { fileUrl?: st
     id: d.id, reference: d.reference, subject: d.subject,
     date: d.date, attachments: d.attachments, status: d.status,
     fileUrl: d.file_url ?? undefined,
+    created_at: d.created_at,
   }))
 }
 
@@ -272,6 +275,7 @@ export async function getDailyJournals(): Promise<DailyJournalRecord[]> {
     status: d.status,
     attachments: d.attachments ?? (d.file_url ? 1 : 0),
     archived: d.archived ?? false,
+    created_at: d.created_at,
   }))
 }
 
@@ -347,6 +351,7 @@ export async function getConfidentialDocs(): Promise<(ConfidentialDoc & { fileUr
     fileUrl:      d.file_url      ?? undefined,
     passwordHash: d.password_hash ?? undefined,
     archived:     d.archived      ?? false,
+    created_at:   d.created_at,
   }))
 }
 
@@ -433,6 +438,7 @@ export async function getLibraryItems(): Promise<(LibraryItem & { fileUrl?: stri
     dateAdded:   d.date_added,
     fileUrl:     d.file_url     ?? undefined,
     description: d.description  ?? undefined,
+    created_at:  d.created_at,
   }))
 }
 
