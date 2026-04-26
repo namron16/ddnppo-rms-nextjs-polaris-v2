@@ -721,12 +721,40 @@ export default function MasterPage() {
     return true
   }
 
+  const countActiveAttachments = useCallback((parentId: string): number => {
+    const children = attachmentsMap.get(parentId) ?? []
+    return children.reduce((total, att) => {
+      if (att.archived) return total
+      return total + 1 + countActiveAttachments(att.id)
+    }, 0)
+  }, [attachmentsMap])
+
+  const childCount = useCallback((attId: string): number => {
+    const children = attachmentsMap.get(attId) ?? []
+    return children.reduce((total, att) => {
+      if (att.archived) return total
+      return total + 1 + childCount(att.id)
+    }, 0)
+  }, [attachmentsMap])
+
   const allFlat  = useMemo(() => flattenDocs(documents), [documents])
   const filtered = useMemo(() => allFlat.filter(({ doc }) => {
     const q = query.trim().toLowerCase()
-    return (!q || doc.title.toLowerCase().includes(q)) &&
+    const matchesDocument = !q || doc.title.toLowerCase().includes(q)
+
+    const matchesAttachment = q ? (() => {
+      const searchNested = (parentId: string): boolean => {
+        const items = attachmentsMap.get(parentId) ?? []
+        return items.some(att =>
+          att.file_name.toLowerCase().includes(q) || searchNested(att.id)
+        )
+      }
+      return searchNested(doc.id)
+    })() : false
+
+    return (matchesDocument || matchesAttachment) &&
            (levelFilter === 'ALL' || doc.level === levelFilter)
-  }), [allFlat, query, levelFilter])
+  }), [allFlat, query, levelFilter, attachmentsMap])
 
   const currentAttachmentEntry = attachmentNavStack.length > 0
     ? attachmentNavStack[attachmentNavStack.length - 1]
@@ -770,10 +798,6 @@ export default function MasterPage() {
   function handleNavigateTo(index: number) {
     setAttachmentNavStack(prev => prev.slice(0, index + 1))
     setShowArchivedAttachments(false)
-  }
-
-  function childCount(attId: string): number {
-    return (attachmentsMap.get(attId) ?? []).filter(a => !a.archived).length
   }
 
   return (
@@ -824,7 +848,7 @@ export default function MasterPage() {
                   <EmptyState icon="📁" title="No documents" description="No active master documents." />
                 ) : (
                   filtered.map(({ doc, depth }) => {
-                    const activeCount = (attachmentsMap.get(doc.id) ?? []).filter(a => !a.archived && !a.parent_attachment_id).length
+                    const activeCount = countActiveAttachments(doc.id)
                     const levelColor = doc.level === 'REGIONAL' ? '#3b63b8' : doc.level === 'PROVINCIAL' ? '#f59e0b' : '#10b981'
                     const indentPx = depth * 16 + 8
                     const rowWidth = `calc(100% - ${indentPx + 8}px)`
@@ -1136,7 +1160,7 @@ export default function MasterPage() {
                                   >
                                     <td className="px-4 py-3">
                                       {isEditing ? (
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex flex-col gap-2">
                                           <input
                                             type="text"
                                             value={editingAttachmentName}
@@ -1151,28 +1175,30 @@ export default function MasterPage() {
                                               }
                                               if (e.key === 'Escape') { setEditingAttachmentId(null); setEditingAttachmentName('') }
                                             }}
-                                            className="w-full max-w-[220px] px-2 py-1 text-xs border border-blue-300 bg-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                            className="w-full px-2 py-2 text-sm border border-blue-300 bg-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-200"
                                             disabled={renamingAttachmentId === att.id}
                                             autoFocus
                                           />
-                                          <button
-                                            onClick={async () => {
-                                              setRenamingAttachmentId(att.id)
-                                              const ok = await handleRenameAttachment(att, editingAttachmentName)
-                                              setRenamingAttachmentId(null)
-                                              if (ok) { setEditingAttachmentId(null); setEditingAttachmentName('') }
-                                            }}
-                                            disabled={renamingAttachmentId === att.id}
-                                            className="text-[10px] px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded font-medium transition disabled:opacity-60"
-                                          >
-                                            {renamingAttachmentId === att.id ? '…' : 'Save'}
-                                          </button>
-                                          <button
-                                            onClick={() => { setEditingAttachmentId(null); setEditingAttachmentName('') }}
-                                            className="text-[10px] px-2 py-1 bg-slate-100 text-slate-600 rounded font-medium transition"
-                                          >
-                                            ✕
-                                          </button>
+                                          <div className="flex flex-wrap gap-2">
+                                            <button
+                                              onClick={async () => {
+                                                setRenamingAttachmentId(att.id)
+                                                const ok = await handleRenameAttachment(att, editingAttachmentName)
+                                                setRenamingAttachmentId(null)
+                                                if (ok) { setEditingAttachmentId(null); setEditingAttachmentName('') }
+                                              }}
+                                              disabled={renamingAttachmentId === att.id}
+                                              className="text-[10px] px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded font-medium transition disabled:opacity-60"
+                                            >
+                                              {renamingAttachmentId === att.id ? '…' : 'Save'}
+                                            </button>
+                                            <button
+                                              onClick={() => { setEditingAttachmentId(null); setEditingAttachmentName('') }}
+                                              className="text-[10px] px-2 py-1 bg-slate-100 text-slate-600 rounded font-medium transition"
+                                            >
+                                              ✕
+                                            </button>
+                                          </div>
                                         </div>
                                       ) : (
                                         <div className="flex items-center gap-2.5">

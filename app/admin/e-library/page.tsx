@@ -46,6 +46,7 @@ function AddLibraryItemModal({
   const { toast }    = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [file, setFile]           = useState<File | null>(null)
+  const [linkUrl, setLinkUrl]     = useState('')
   const [dragging, setDragging]   = useState(false)
   const [uploading, setUploading] = useState(false)
   const [errors, setErrors]       = useState<Record<string, string>>({})
@@ -63,11 +64,13 @@ function AddLibraryItemModal({
   function handleFileChange(nextFile: File | null) {
     if (!nextFile) return
     setFile(nextFile)
+    setLinkUrl('')
     setErrors(prev => ({ ...prev, file: '' }))
   }
 
   function resetAndClose() {
     setForm({ title: '', category: 'MANUAL', description: '' })
+    setLinkUrl('')
     setErrors({})
     setFile(null)
     setDragging(false)
@@ -78,35 +81,47 @@ function AddLibraryItemModal({
   async function submit() {
     const nextErrors: Record<string, string> = {}
     if (!form.title.trim()) nextErrors.title = 'Title is required.'
-    if (!file) nextErrors.file = 'Attachment is required.'
+    if (!file && !linkUrl.trim()) nextErrors.file = 'File or URL is required.'
+    if (linkUrl.trim()) {
+      try {
+        new URL(linkUrl.trim())
+      } catch {
+        nextErrors.linkUrl = 'Please enter a valid URL.'
+      }
+    }
+
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors)
       return
     }
 
-    if (!file) return
-    const uploadFile: File = file
     setErrors({})
     setUploading(true)
     try {
       let fileUrl: string | undefined
-      let fileSize = '—'
+      let fileSize = 'Link'
 
-      const fileName = `library/${Date.now()}-${uploadFile.name.replace(/\s+/g, '_')}`
-      const { data: storageData, error: storageError } = await supabase.storage
-        .from('documents')
-        .upload(fileName, uploadFile, { cacheControl: '3600', upsert: false })
+      if (file) {
+        const uploadFile: File = file
+        const fileName = `library/${Date.now()}-${uploadFile.name.replace(/\s+/g, '_')}`
+        const { data: storageData, error: storageError } = await supabase.storage
+          .from('documents')
+          .upload(fileName, uploadFile, { cacheControl: '3600', upsert: false })
 
-      if (storageError) {
-        toast.error('File upload failed. Please try again.')
-        setUploading(false)
-        return
+        if (storageError) {
+          toast.error('File upload failed. Please try again.')
+          setUploading(false)
+          return
+        }
+        const { data: urlData } = supabase.storage
+          .from('documents')
+          .getPublicUrl(storageData.path)
+        fileUrl  = urlData.publicUrl
+        fileSize = (uploadFile.size / 1024 / 1024).toFixed(1) + ' MB'
+      } else {
+        fileUrl  = linkUrl.trim()
+        fileSize = 'Link'
       }
-      const { data: urlData } = supabase.storage
-        .from('documents')
-        .getPublicUrl(storageData.path)
-      fileUrl  = urlData.publicUrl
-      fileSize = (uploadFile.size / 1024 / 1024).toFixed(1) + ' MB'
 
       const today   = new Date().toISOString().split('T')[0]
       const newItem: LibraryItemWithUrl = {
@@ -131,7 +146,7 @@ function AddLibraryItemModal({
     }
   }
 
-  const hasMissingRequired = !form.title.trim() || !file
+  const hasMissingRequired = !form.title.trim() || (!file && !linkUrl.trim())
 
   const cls = (f: string) =>
     `w-full px-3 py-2.5 border-[1.5px] rounded-lg text-sm bg-slate-50 focus:outline-none focus:bg-white transition ${
@@ -181,72 +196,88 @@ function AddLibraryItemModal({
           />
         </div>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
-          className="hidden"
-          onChange={e => handleFileChange(e.target.files?.[0] ?? null)}
-        />
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-widest text-slate-500 mb-1.5">
+              Link URL <span className="text-slate-400">(optional if uploading a file)</span>
+            </label>
+            <input
+              type="url"
+              className={cls('linkUrl')}
+              placeholder="https://www.pnp.gov.ph/…"
+              value={linkUrl}
+              onChange={e => { setLinkUrl(e.target.value); setErrors(prev => ({ ...prev, linkUrl: '' })) }}
+              disabled={uploading}
+            />
+            {errors.linkUrl && <p className="text-xs text-red-500 mt-1 font-medium">⚠ {errors.linkUrl}</p>}
+          </div>
 
-        {file ? (
-          <div className="flex items-center justify-between px-4 py-3 bg-blue-50 border-[1.5px] border-blue-200 rounded-xl">
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="text-2xl flex-shrink-0">
-                {file.name.endsWith('.pdf')      ? '📕'
-                  : file.name.match(/\.docx?$/) ? '📘'
-                  : file.name.match(/\.xlsx?$/) ? '📗'
-                  : '🖼️'}
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-slate-800 truncate">{file.name}</p>
-                <p className="text-xs text-slate-400">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+            className="hidden"
+            onChange={e => handleFileChange(e.target.files?.[0] ?? null)}
+          />
+
+          {file ? (
+            <div className="flex items-center justify-between px-4 py-3 bg-blue-50 border-[1.5px] border-blue-200 rounded-xl">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="text-2xl flex-shrink-0">
+                  {file.name.endsWith('.pdf')      ? '📕'
+                    : file.name.match(/\.docx?$/) ? '📘'
+                    : file.name.match(/\.xlsx?$/) ? '📗'
+                    : '🖼️'}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-800 truncate">{file.name}</p>
+                  <p className="text-xs text-slate-400">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                </div>
               </div>
+              {!uploading && (
+                <button
+                  onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
+                  className="text-slate-400 hover:text-red-500 font-bold text-sm ml-3 flex-shrink-0"
+                >✕</button>
+              )}
             </div>
-            {!uploading && (
-              <button
-                onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
-                className="text-slate-400 hover:text-red-500 font-bold text-sm ml-3 flex-shrink-0"
-              >✕</button>
-            )}
-          </div>
-        ) : (
-          <div
-            onDragOver={e  => { e.preventDefault(); setDragging(true) }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={e => { e.preventDefault(); setDragging(false); handleFileChange(e.dataTransfer.files?.[0] ?? null) }}
-            onClick={() => !uploading && fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition ${
-              errors.file
-                ? 'border-red-400 bg-red-50'
-                : dragging
-                  ? 'border-blue-400 bg-blue-50'
-                  : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50'
-            }`}
-          >
-            <div className="text-2xl mb-1.5">📗</div>
-            <p className="text-sm font-medium text-slate-600 mb-0.5">Upload file</p>
-            <p className="text-xs text-slate-400">PDF, DOCX, XLSX, JPG — max 50 MB</p>
-          </div>
-        )}
+          ) : (
+            <div
+              onDragOver={e  => { e.preventDefault(); setDragging(true) }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={e => { e.preventDefault(); setDragging(false); handleFileChange(e.dataTransfer.files?.[0] ?? null) }}
+              onClick={() => !uploading && fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition ${
+                errors.file
+                  ? 'border-red-400 bg-red-50'
+                  : dragging
+                    ? 'border-blue-400 bg-blue-50'
+                    : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50'
+              }`}
+            >
+              <div className="text-2xl mb-1.5">📗</div>
+              <p className="text-sm font-medium text-slate-600 mb-0.5">Upload file</p>
+              <p className="text-xs text-slate-400">PDF, DOCX, XLSX, JPG — max 50 MB</p>
+            </div>
+          )}
+          {!file && (
+            <p className="text-xs text-slate-500 mt-2">Or paste a public PNP site URL above instead of uploading a file.</p>
+          )}
 
-        {errors.file && <p className="text-xs text-red-500 mt-1 font-medium">⚠ {errors.file}</p>}
+          {uploading && (
+            <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
+              <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              <p className="text-sm text-blue-700 font-medium">Uploading to cloud storage…</p>
+            </div>
+          )}
 
-        {uploading && (
-          <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
-            <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-            <p className="text-sm text-blue-700 font-medium">Uploading to cloud storage…</p>
+          <div className="flex justify-end gap-2.5 pt-1">
+            <Button variant="outline" onClick={resetAndClose} disabled={uploading}>Cancel</Button>
+            <Button variant="primary" onClick={submit} disabled={uploading || hasMissingRequired}>
+              {uploading ? 'Uploading…' : '📚 Add to Library'}
+            </Button>
           </div>
-        )}
-
-        <div className="flex justify-end gap-2.5 pt-1">
-          <Button variant="outline" onClick={resetAndClose} disabled={uploading}>Cancel</Button>
-          <Button variant="primary" onClick={submit} disabled={uploading || hasMissingRequired}>
-            {uploading ? 'Uploading…' : '📚 Add to Library'}
-          </Button>
         </div>
-      </div>
-    </Modal>
+      </Modal>
   )
 }
 
@@ -270,7 +301,7 @@ function ViewItemModal({
   return (
     <Modal open={open} onClose={onClose} title="Library Item" width="max-w-4xl">
       <div className="p-6 space-y-4">
-        <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3">
           <div className="col-span-2 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Title</p>
             <p className="text-sm font-bold text-slate-800">{item.title}</p>
@@ -305,9 +336,13 @@ function ViewItemModal({
                 >
                   🖨️ Print
                 </button>
-                <a href={item.fileUrl} download target="_blank" rel="noopener noreferrer"
-                  className="text-xs px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md font-medium transition">
-                  ⬇ Download
+                <a
+                  href={item.fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md font-medium transition"
+                >
+                  {item.size === 'Link' ? '🔗 Open link' : '⬇ Download'}
                 </a>
               </div>
             </div>
@@ -538,6 +573,7 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true)
   const [catFilter, setCat]   = useState<LibraryCategory | 'ALL'>('ALL')
 
+  const canUploadLibrary = user?.permissions.canUpload ?? false
   const isSuperAdmin = user?.role === 'P1'
 
   const newModal    = useModal()
@@ -566,8 +602,8 @@ export default function LibraryPage() {
   }, [])
 
   function handleAdd(newItem: LibraryItemWithUrl) {
-    if (!isSuperAdmin) {
-      toast.error('Only P1 can add e-Library items.')
+    if (!canUploadLibrary) {
+      toast.error('Only P1–P10 accounts can add e-Library items.')
       return
     }
 
@@ -709,7 +745,7 @@ export default function LibraryPage() {
               <option value="GUIDELINE">Guideline</option>
               <option value="TEMPLATE">Template</option>
             </ToolbarSelect>
-            {isSuperAdmin && (
+            {canUploadLibrary && (
               <Button variant="primary" size="sm" className="ml-auto" onClick={newModal.open}>
                 + Add to Library
               </Button>
@@ -731,7 +767,7 @@ export default function LibraryPage() {
               }
               action={
                 !query && catFilter === 'ALL'
-                  ? (isSuperAdmin ? <Button variant="primary" size="sm" onClick={newModal.open}>+ Add to Library</Button> : undefined)
+                  ? (canUploadLibrary ? <Button variant="primary" size="sm" onClick={newModal.open}>+ Add to Library</Button> : undefined)
                   : undefined
               }
             />
@@ -817,7 +853,7 @@ export default function LibraryPage() {
         </div>
       </div>
 
-      {isSuperAdmin && (
+      {canUploadLibrary && (
         <AddLibraryItemModal
           open={newModal.isOpen}
           onClose={newModal.close}
