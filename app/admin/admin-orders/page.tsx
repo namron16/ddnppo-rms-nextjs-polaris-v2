@@ -31,9 +31,6 @@ import { logDeleteDocument, logViewDocument }      from '@/lib/adminLogger'
 import { useAuth } from '@/lib/auth'
 import type { AdminRole } from '@/lib/auth'
 import { useRealtimeSpecialOrders } from '@/hooks/useRealtimeSpecialOrders'
-import {
-  canUploadDocuments, canEditDocuments, canDeleteDocuments, canArchiveDocuments,
-} from '@/lib/permissions'
 import type { SpecialOrder }    from '@/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -1026,14 +1023,6 @@ export default function AdminOrdersPage() {
   const { toast } = useToast()
   const { user } = useAuth()
 
-  const isSuperAdmin = user?.role === 'P1'
-
-  // Permission flags
-  const canUpload = user?.role ? canUploadDocuments(user.role) : false
-  const canEdit = user?.role ? canEditDocuments(user.role) : false
-  const canDelete = user?.role ? canDeleteDocuments(user.role) : false
-  const canArchive = user?.role ? canArchiveDocuments(user.role) : false
-
   const [orders,         setOrders]         = useState<SOWithUrl[]>([])
   const [query,          setQuery]          = useState('')
   const [statusFilter,   setStatusFilter]   = useState('ALL')
@@ -1043,7 +1032,7 @@ export default function AdminOrdersPage() {
   const [uploadingId,    setUploadingId]    = useState<string | null>(null)
   const [archivingAtt,   setArchivingAtt]   = useState(false)
 
-  useRealtimeSpecialOrders({ setOrders, setAttachmentsMap, user, isP1: isSuperAdmin })
+  useRealtimeSpecialOrders({ setOrders, setAttachmentsMap, user })
 
   const [navStack, setNavStack] = useState<NavEntry[]>([])
 
@@ -1133,11 +1122,6 @@ export default function AdminOrdersPage() {
   }
 
   async function handleUpload(parentOrderId: string, parentAttId: string | null, files: FileList) {
-    if (!canUpload) {
-      toast.error('You do not have permission to upload attachments to Admin Orders.')
-      return
-    }
-
     setUploadingId(parentAttId ?? parentOrderId)
     let count = 0
     for (const file of Array.from(files)) {
@@ -1184,11 +1168,6 @@ export default function AdminOrdersPage() {
   }
 
   async function handleAdd(newSO: SOWithUrl) {
-    if (!canUpload) {
-      toast.error('You do not have permission to add Admin Orders.')
-      return
-    }
-
     await addSpecialOrder(newSO)
     setOrders(prev => [newSO, ...prev])
     setAttachmentsMap(prev => { const next = new Map(prev); next.set(newSO.id, []); return next })
@@ -1197,11 +1176,6 @@ export default function AdminOrdersPage() {
   }
 
   async function handleArchiveOrder() {
-    if (!canArchive) {
-      toast.error('You do not have permission to archive Admin Orders.')
-      return
-    }
-
     const so = archiveDisc.payload
     if (!so) return
     const today = new Date().toISOString().split('T')[0]
@@ -1223,10 +1197,6 @@ export default function AdminOrdersPage() {
   async function handleDeleteOrder() {
     const so = deleteDisc.payload
     if (!so) return
-    if (!canDelete) {
-      toast.error('You do not have permission to delete Admin Orders.')
-      return
-    }
 
     await deleteSpecialOrder(so.id)
     await logDeleteDocument(`${so.reference} - ${so.subject}`, 'special order', user?.role as AdminRole)
@@ -1240,11 +1210,6 @@ export default function AdminOrdersPage() {
   }
 
   async function handleSaveOrder(updatedOrder: SOWithUrl) {
-    if (!canEdit) {
-      toast.error('You do not have permission to edit Admin Orders.')
-      return
-    }
-
     await updateSpecialOrder(updatedOrder)
     setOrders(prev => prev.map(order => order.id === updatedOrder.id ? updatedOrder : order))
     if (selectedOrder?.id === updatedOrder.id) {
@@ -1260,11 +1225,6 @@ export default function AdminOrdersPage() {
   }
 
   async function handleArchiveAttachment() {
-    if (!isSuperAdmin) {
-      toast.error('Only P1 can archive attachments.')
-      return
-    }
-
     const att = archiveAttDisc.payload
     if (!att) return
     setArchivingAtt(true)
@@ -1293,11 +1253,6 @@ export default function AdminOrdersPage() {
   }
 
   async function handleRestoreAttachment(att: SOAttachment) {
-    if (!isSuperAdmin) {
-      toast.error('Only P1 can restore attachments.')
-      return
-    }
-
     const ok = await dbRestoreAttachment(att.id)
     if (!ok) { toast.error('Could not restore attachment.'); return }
     const mapKey = att.parent_attachment_id ?? att.special_order_id
@@ -1311,11 +1266,6 @@ export default function AdminOrdersPage() {
   }
 
   async function handleRenameAttachment(att: SOAttachment, newName: string): Promise<boolean> {
-    if (!isSuperAdmin) {
-      toast.error('Only P1 can rename attachments.')
-      return false
-    }
-
     const trimmed = newName.trim()
     if (!trimmed) { toast.error('File name cannot be empty.'); return false }
     if (trimmed === att.file_name) return true
@@ -1350,15 +1300,6 @@ export default function AdminOrdersPage() {
     sourceDocumentId?: string,
   ) => {
     try {
-      if (user && !isSuperAdmin) {
-        if (!sourceDocumentId) {
-          toast.error('Printing/downloading is only allowed for files approved by P1.')
-          return
-        }
-
-       
-      }
-
       await printFileFromUrl(fileUrl)
 
       toast.success(`Opened print preview for "${fileName}".`)
@@ -1366,7 +1307,7 @@ export default function AdminOrdersPage() {
       console.error('print error:', error)
       toast.error('Could not print the file.')
     }
-  }, [toast, user, isSuperAdmin])
+  }, [toast])
 
   // Filtered list for left panel
   const filteredOrders = useMemo(() => {
@@ -1401,11 +1342,11 @@ export default function AdminOrdersPage() {
               <option value="ACTIVE">Active</option>
               <option value="PENDING">Pending</option>
             </ToolbarSelect>
-            {isSuperAdmin && (
+             
               <Button variant="primary" size="sm" className="ml-auto" onClick={newSOModal.open}>
                 + New SO
               </Button>
-            )}
+          
           </div>
 
           {/* Split view */}
@@ -1428,8 +1369,8 @@ export default function AdminOrdersPage() {
                 ) : filteredOrders.length === 0 ? (
                   <EmptyState 
                     icon="📋" 
-                    title={isSuperAdmin ? "No orders found" : "No saved orders"} 
-                    description={isSuperAdmin ? "Create your first order." : "Save orders from your Inbox to view them here."} 
+                    title="No orders found" 
+                    description="Create your first order." 
                   />
                 ) : (
                   filteredOrders.map(order => (
@@ -1472,7 +1413,7 @@ export default function AdminOrdersPage() {
                     icon="📋"
                     title="Select an order"
                     description="Click any order from the list on the left to view its attachments."
-                    action={isSuperAdmin ? <Button variant="primary" size="sm" onClick={newSOModal.open}>+ New SO</Button> : undefined}
+                    action={<Button variant="primary" size="sm" onClick={newSOModal.open}>+ New SO</Button>}
                   />
                 </div>
               ) : (
@@ -1490,7 +1431,7 @@ export default function AdminOrdersPage() {
                     onForwardOrder={() => setForwardModalOpen(true)}
                     onArchiveOrder={() => selectedOrder && archiveDisc.open(selectedOrder)}
                     onDeleteOrder={() => selectedOrder && deleteDisc.open(selectedOrder)}
-                    canEditOrder={isSuperAdmin}
+                    canEditOrder={true}
                     onEditOrder={() => selectedOrder && editOrderDisc.open(selectedOrder)}
                     onViewFile={handleViewFile}
                     onDownloadFile={handleDownloadFile}
@@ -1509,9 +1450,7 @@ export default function AdminOrdersPage() {
       </div>
 
       {/* Modals */}
-      {isSuperAdmin && (
-        <AddSpecialOrderModal open={newSOModal.isOpen} onClose={newSOModal.close} onAdd={handleAdd} />
-      )}
+      <AddSpecialOrderModal open={newSOModal.isOpen} onClose={newSOModal.close} onAdd={handleAdd} />
 
       <EditSpecialOrderModal
         open={editOrderDisc.isOpen}
@@ -1520,7 +1459,7 @@ export default function AdminOrdersPage() {
         onSave={handleSaveOrder}
       />
 
-      {selectedOrder && isSuperAdmin && (
+      {selectedOrder && (
         <ForwardDocumentModal
           open={forwardModalOpen}
           onClose={() => setForwardModalOpen(false)}

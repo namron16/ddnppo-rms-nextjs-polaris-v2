@@ -62,10 +62,10 @@ interface Options {
   setOrders: React.Dispatch<React.SetStateAction<any[]>>
   setAttachmentsMap: React.Dispatch<React.SetStateAction<Map<string, SOAttachment[]>>>
   user: { role: string } | null
-  isP1: boolean
+  
 }
 
-export function useRealtimeSpecialOrders({ setOrders, setAttachmentsMap, user, isP1 }: Options) {
+export function useRealtimeSpecialOrders({ setOrders, setAttachmentsMap, user}: Options) {
   const setOrdersRef = useRef(setOrders)
   const setAttsRef = useRef(setAttachmentsMap)
   useEffect(() => { setOrdersRef.current = setOrders }, [setOrders])
@@ -137,5 +137,5 @@ export function useRealtimeSpecialOrders({ setOrders, setAttachmentsMap, user, i
       void supabase.removeChannel(ordersChannel)
       void supabase.removeChannel(attsChannel)
     }
-  }, [isP1, user])
+  }, [user])
 }
