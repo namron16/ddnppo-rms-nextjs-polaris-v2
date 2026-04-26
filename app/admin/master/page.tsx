@@ -1247,8 +1247,7 @@ export default function MasterPage() {
                                         month: 'short', 
                                         day: 'numeric',
                                         hour: '2-digit',
-                                        minute: '2-digit',
-                                        second: '2-digit'
+                                        minute: '2-digit'
                                       })}
                                     </td>
                                     <td className="px-4 py-3 text-xs text-slate-500">{att.uploaded_by}</td>
