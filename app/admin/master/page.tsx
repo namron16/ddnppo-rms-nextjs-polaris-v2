@@ -1,6 +1,6 @@
 'use client'
 // app/admin/master/page.tsx  — v2
-// P1-only uploads, tag-based visibility for P2–P10
+// P1-only uploads
 
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { PageHeader }       from '@/components/ui/PageHeader'
@@ -21,14 +21,13 @@ import { useAuth }          from '@/lib/auth'
 import { levelBadgeClass }  from '@/lib/utils'
 import { supabase }         from '@/lib/supabase'
 import { useRealtimeMasterDocs } from './useRealtimeMasterDocs'
-import { FileText, Paperclip, Lock, ShieldCheck, Printer } from 'lucide-react'
+import { FileText, Paperclip, Printer } from 'lucide-react'
 import {
   getMasterDocuments, addMasterDocument, updateMasterDocument,
   archiveMasterDocument, deleteMasterDocument, addArchivedDoc, getArchivedDocs,
 } from '@/lib/data'
 import {
   getApproval, getPendingApprovals, 
-   isDocumentUnrestricted,
   createApproval, reviewByDPDAorDPDO, finalApproveByPD,
   type DocumentApproval, type DocType,
 } from '@/lib/rbac'
@@ -44,9 +43,6 @@ import type { AdminRole } from '@/lib/auth'
 type DocWithUrl = MasterDocument & { fileUrl?: string }
 type DocEnriched = DocWithUrl & {
   approval?: DocumentApproval | null
-  canView?: boolean
-  isRestricted: boolean
-  taggedRoles?: AdminRole[]
 }
 
 type AttachmentNavEntry =
@@ -359,18 +355,14 @@ function EditModal({ doc, open, onClose, onSave }: {
   const { toast } = useToast()
   const [title, setTitle] = useState('')
   const [level, setLevel] = useState<DocLevel>('REGIONAL')
-  const [tag,   setTag]   = useState('COMPLIANCE')
   const [date,  setDate]  = useState('')
   const [type,  setType]  = useState('PDF')
-  const [taggedRoles, setTaggedRoles] = useState<AdminRole[]>([])
   useMemo(() => {
     if (doc) {
       setTitle(doc.title)
       setLevel(doc.level)
-      setTag(doc.tag)
       setDate(doc.date)
       setType(doc.type)
-      setTaggedRoles((doc.taggedRoles ?? doc.taggedAdminAccess ?? []) as AdminRole[])
     }
   }, [doc])
   function submit() {
@@ -380,10 +372,8 @@ function EditModal({ doc, open, onClose, onSave }: {
       ...doc,
       title: title.trim(),
       level,
-      tag,
       date,
       type,
-      taggedAdminAccess: taggedRoles,
     })
   }
   const cls = 'w-full px-3 py-2.5 border-[1.5px] border-slate-200 rounded-lg text-sm bg-slate-50 focus:outline-none focus:border-blue-500 focus:bg-white transition'
@@ -401,15 +391,6 @@ function EditModal({ doc, open, onClose, onSave }: {
               <option value="REGIONAL">Regional</option>
               <option value="PROVINCIAL">Provincial</option>
               <option value="STATION">Station</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-widests text-slate-500 mb-1.5">Tag</label>
-            <select className={cls} value={tag} onChange={e => setTag(e.target.value)}>
-              <option value="COMPLIANCE">Compliance</option>
-              <option value="DIRECTIVE">Directive</option>
-              <option value="CIRCULAR">Circular</option>
-              <option value="MEMORANDUM">Memorandum</option>
             </select>
           </div>
         </div>
@@ -496,23 +477,6 @@ export default function MasterPage() {
     isP1,
   })
 
-  const syncDocumentAccess = useCallback(async (documentId: string) => {
-    if (!user || isPrivileged) return true
-
-
-    setDocuments(prev => prev.map(doc => (
-      doc.id === documentId
-        ? { ...doc}
-        : doc
-    )))
-
-    setSelection(prev => prev && prev.id === documentId
-      ? { ...prev }
-      : prev
-    )
-
-  }, [user, isPrivileged])  
-
   const handleDownloadFile = useCallback(async (
     fileUrl: string,
     suggestedName: string,
@@ -520,15 +484,6 @@ export default function MasterPage() {
     sourceDocumentId?: string,
   ) => {
     try {
-      if (user && !hasFullDocumentAccess(user.role as AdminRole)) {
-        if (!sourceDocumentId) {
-          toast.error('Printing/downloading is only allowed for files approved by P1.')
-          return
-        }
-
-        
-      }
-
       setDownloadingKey(downloadKey)
       const saved = await saveFileFromUrl(fileUrl, suggestedName)
       toast.success(saved ? `Downloaded "${suggestedName}" successfully.` : `Downloaded "${suggestedName}" successfully.`)
@@ -538,7 +493,7 @@ export default function MasterPage() {
     } finally {
       setDownloadingKey(current => current === downloadKey ? null : current)
     }
-  }, [toast, user])
+  }, [toast])
 
   const handlePrintFile = useCallback(async (
     fileUrl: string,
@@ -546,15 +501,6 @@ export default function MasterPage() {
     sourceDocumentId?: string,
   ) => {
     try {
-      if (user && !hasFullDocumentAccess(user.role as AdminRole)) {
-        if (!sourceDocumentId) {
-          toast.error('Printing/downloading is only allowed for files approved by P1.')
-          return
-        }
-
-       
-      }
-
       await printFileFromUrl(fileUrl)
 
       toast.success(`Opened print preview for "${fileName}".`)
@@ -562,7 +508,7 @@ export default function MasterPage() {
       console.error('print error:', error)
       toast.error('Could not print the file.')
     }
-  }, [toast, user])
+  }, [toast])
 
   useEffect(() => {
     async function loadAll() {
@@ -576,27 +522,21 @@ export default function MasterPage() {
         )
         const activeDocs = docs.filter((d: DocWithUrl) => !archivedIds.has(d.id))
 
-        // Enrich with approvals and visibility
-        const docIds = activeDocs.map((d: DocWithUrl) => d.id)
-        let visibleIds = new Set<string>(docIds)
-
-        
-
+        // Enrich with approvals
         const enriched: DocEnriched[] = await Promise.all(
           activeDocs.map(async (doc: DocWithUrl) => {
             const approval = await getApproval(doc.id, 'master')
-            const canView  = isPrivileged ? true : visibleIds.has(doc.id)
-            return { ...doc, approval, canView, isRestricted: !canView }
+            return { ...doc, approval }
           })
         )
         setDocuments(enriched)
 
         // Load attachments
-        if (docIds.length > 0) {
+        if (docs.length > 0) {
           const { data: allAtts } = await supabase
             .from('master_document_attachments')
             .select('*')
-            .in('document_id', docIds)
+            .in('document_id', docs.map(d => d.id))
             .order('uploaded_at', { ascending: true })
 
           const map = new Map<string, DocAttachment[]>()
@@ -627,58 +567,6 @@ export default function MasterPage() {
   }, [user, isPrivileged, isP1, isReviewer, isPD])
 
   useEffect(() => {
-    if (!user || isPrivileged || !selection) return
-
-    const channel = supabase
-      .channel(`master_visibility_${selection.id}_${user.role}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'document_visibility',
-        filter: `document_id=eq.${selection.id}`,
-      }, payload => {
-        const row = payload.new as any
-        if (row.admin_id !== user.role) return
-        const canView = row.can_view === true
-
-        setDocuments(prev => prev.map(doc => (
-          doc.id === selection.id
-            ? { ...doc, canView, isRestricted: !canView }
-            : doc
-        )))
-
-        setSelection(prev => prev && prev.id === selection.id
-          ? { ...prev, canView, isRestricted: !canView }
-          : prev
-        )
-      })
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'document_visibility',
-        filter: `document_id=eq.${selection.id}`,
-      }, payload => {
-        const row = payload.new as any
-        if (row.admin_id !== user.role) return
-        const canView = row.can_view === true
-
-        setDocuments(prev => prev.map(doc => (
-          doc.id === selection.id
-            ? { ...doc, canView, isRestricted: !canView }
-            : doc
-        )))
-
-        setSelection(prev => prev && prev.id === selection.id
-          ? { ...prev, canView, isRestricted: !canView }
-          : prev
-        )
-      })
-      .subscribe()
-
-    return () => { supabase.removeChannel(channel) }
-  }, [user, isPrivileged, selection?.id])
-
-  useEffect(() => {
     if (selection) {
       setAttachmentNavStack([{ kind: 'document', doc: selection }])
     } else {
@@ -692,9 +580,6 @@ export default function MasterPage() {
     const enriched: DocEnriched = {
       ...newDoc,
       approval: null,
-      canView: true,
-      isRestricted: false,
-      taggedRoles: (newDoc.taggedAdminAccess ?? []) as AdminRole[],
     }
     setDocuments(prev => {
       if (prev.some(d => d.id === enriched.id)) {
@@ -712,8 +597,6 @@ export default function MasterPage() {
       ? {
           ...d,
           ...updated,
-          isRestricted: d.isRestricted,
-          taggedRoles: (updated.taggedAdminAccess ?? []) as AdminRole[],
         }
       : d
     ))
@@ -721,8 +604,6 @@ export default function MasterPage() {
       setSelection(prev => prev ? {
         ...prev,
         ...updated,
-        isRestricted: prev.isRestricted,
-        taggedRoles: (updated.taggedAdminAccess ?? []) as AdminRole[],
       } : prev)
     }
     toast.success('Document updated.')
@@ -884,21 +765,7 @@ export default function MasterPage() {
     setSelection(doc)
     setAttachmentNavStack([{ kind: 'document', doc }])
     setShowArchivedAttachments(false)
-
-    // Ensure request-approved temporary access is reflected immediately.
-    void syncDocumentAccess(doc.id)
   }
-
-  useEffect(() => {
-    if (!selection || !user || isPrivileged) return
-
-    // Keep temporary access in sync and auto-expire without requiring page reload.
-    const tick = () => { void syncDocumentAccess(selection.id) }
-    tick()
-    const id = window.setInterval(tick, 60 * 1000)
-
-    return () => window.clearInterval(id)
-  }, [selection?.id, user, isPrivileged, syncDocumentAccess])
 
   function handleDrillDown(att: DocAttachment) {
     setAttachmentNavStack(prev => [...prev, { kind: 'attachment', att }])
@@ -913,8 +780,6 @@ export default function MasterPage() {
   function childCount(attId: string): number {
     return (attachmentsMap.get(attId) ?? []).filter(a => !a.archived).length
   }
-
-  const selectedDocumentRestricted = !!selection?.isRestricted
 
   return (
     <>
@@ -996,18 +861,6 @@ export default function MasterPage() {
                         <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: levelColor }} />
                         <span className="flex-1 truncate text-[13px] font-medium">{doc.title}</span>
 
-                        {/* Visibility indicator for P1 */}
-                        {isP1 && doc.taggedRoles && doc.taggedRoles.length > 0 && (
-                          <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${selection?.id === doc.id ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-600'}`}>
-                            {doc.taggedRoles.length}
-                          </span>
-                        )}
-
-                        {/* Lock for viewers without access */}
-                        {!isPrivileged && !doc.canView && (
-                          <Lock size={12} className={selection?.id === doc.id ? 'text-white/60' : 'text-slate-400'} />
-                        )}
-
                         {/* Approval status dot */}
                         {(isP1 || isReviewer || isPD) && doc.approval && doc.approval.status !== 'approved' && (
                           <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -1038,16 +891,12 @@ export default function MasterPage() {
                     <span className="text-[11px] text-slate-400">{l.label}</span>
                   </div>
                 ))}
-                <div className="flex items-center gap-2 pt-1 border-t border-slate-100 mt-1">
-                  <Lock size={11} className="text-slate-400" />
-                  <span className="text-[11px] text-slate-400">Restricted access</span>
-                </div>
               </div>
             </div>
 
             {/* Right: detail panel */}
             <div className="relative flex-1 min-h-0 overflow-hidden">
-              <div className={`h-full overflow-y-auto p-6 transition-all duration-200 ${selectedDocumentRestricted ? 'pointer-events-none select-none blur-sm opacity-20' : ''}`}>
+              <div className="h-full overflow-y-auto p-6 transition-all duration-200">
                 {!selection ? (
                   <div className="h-full flex items-center justify-center">
                     <EmptyState
@@ -1084,17 +933,10 @@ export default function MasterPage() {
                       <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                         <h2 className="text-lg font-extrabold text-slate-800">{selection.title}</h2>
                         <Badge className={levelBadgeClass(selection.level)}>{selection.level}</Badge>
-                        <Badge className="bg-blue-50 text-blue-700 border border-blue-200">{selection.tag}</Badge>
-                        
                       </div>
                       <div className="flex items-center gap-2 flex-wrap text-xs text-slate-500">
                         <span className="bg-slate-100 px-2 py-0.5 rounded-full">📅 {selection.date}</span>
                         <span className="bg-slate-100 px-2 py-0.5 rounded-full">{selection.type} · {selection.size}</span>
-                        {isP1 && selection.taggedRoles && (
-                          <span className="bg-violet-50 text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full font-semibold">
-                            🏷️ {selection.taggedRoles.length} tagged
-                          </span>
-                        )}
                       </div>
                     </div>
 
@@ -1479,27 +1321,7 @@ export default function MasterPage() {
                 )}
               </div>
 
-              {selection && selectedDocumentRestricted && (
-                <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/35 backdrop-blur-sm px-6">
-                  <div className="w-full max-w-lg rounded-3xl border border-slate-200/80 bg-white/95 shadow-2xl px-8 py-7 text-center">
-                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-50 text-red-600">
-                      <Lock size={26} />
-                    </div>
-                    <h3 className="text-xl font-extrabold text-slate-900">Restricted Document</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Restricted Document – You do not have permission to view this document and its attachments.
-                    </p>
-                    <p className="mt-1 text-xs text-slate-400">
-                      All document content in this panel is hidden until access is granted.
-                    </p>
-                    <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-medium text-amber-800">
-                        Contact P1 to request access
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+             
             </div>
           </div>
         </div>

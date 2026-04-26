@@ -243,13 +243,7 @@ export function AddDocumentModal({ open, onClose, onAdd }: AddDocumentModalProps
         {errors.file && <p className="text-xs text-red-500 mt-1 font-medium">⚠ {errors.file}</p>}
 
         {/* Upload notice */}
-        <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-800">
-          <span className="flex-shrink-0 mt-0.5">📋</span>
-          <span>
-            Document will be submitted to DPDA/DPDO for review, then PD for final approval.
-            Only tagged P2–P10 admins will see it once approved.
-          </span>
-        </div>
+       
 
         {uploading && (
           <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
@@ -261,7 +255,7 @@ export function AddDocumentModal({ open, onClose, onAdd }: AddDocumentModalProps
         <div className="flex justify-end gap-2.5 pt-1">
           <Button variant="outline" onClick={resetAndClose} disabled={uploading}>Cancel</Button>
           <Button variant="primary" onClick={handleSubmit} disabled={uploading || !file}>
-            {uploading ? 'Uploading…' : '📤 Upload & Set Visibility'}
+            {uploading ? 'Uploading…' : '📤 Upload'}
           </Button>
         </div>
       </div>
