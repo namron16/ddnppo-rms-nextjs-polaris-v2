@@ -1473,6 +1473,7 @@ export default function AdminOrdersPage() {
           documentData={selectedOrder}
           attachmentsMap={attachmentsMap}
           onForwarded={() => setForwardModalOpen(false)}
+          senderRole={user?.role as AdminRole}
         />
       )}
 

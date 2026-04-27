@@ -24,9 +24,11 @@ interface ForwardDocumentModalProps {
   documentData: Record<string, any>
   attachmentsMap: Map<string, any[]>
   onForwarded: () => void
+  senderRole: AdminRole
 }
 
 const RECIPIENT_ROLES: AdminRole[] = ['P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10']
+const ALL_FORWARDABLE_ROLES: AdminRole[] = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10']
 
 export function ForwardDocumentModal({
   open,
@@ -34,11 +36,17 @@ export function ForwardDocumentModal({
   document,
   documentData,
   attachmentsMap,
-  onForwarded
+  onForwarded,
+  senderRole
 }: ForwardDocumentModalProps) {
   const [selectedRecipients, setSelectedRecipients] = useState<Set<AdminRole>>(new Set())
   const [isForwarding, setIsForwarding] = useState(false)
   const { toast } = useToast()
+
+  // Calculate available recipients (all forwardable roles except sender)
+  const availableRecipients = useMemo(() => {
+    return ALL_FORWARDABLE_ROLES.filter(role => role !== senderRole)
+  }, [senderRole])
 
   // Calculate attachment statistics
   const attachmentStats = useMemo(() => {
@@ -61,10 +69,10 @@ export function ForwardDocumentModal({
   }, [document.id, attachmentsMap])
 
   const handleSelectAll = () => {
-    if (selectedRecipients.size === RECIPIENT_ROLES.length) {
+    if (selectedRecipients.size === availableRecipients.length) {
       setSelectedRecipients(new Set())
     } else {
-      setSelectedRecipients(new Set(RECIPIENT_ROLES))
+      setSelectedRecipients(new Set(availableRecipients))
     }
   }
 
@@ -90,7 +98,8 @@ export function ForwardDocumentModal({
         documentType: document.documentType,
         documentId: document.id,
         documentTitle: document.title,
-        recipients: Array.from(selectedRecipients)
+        recipients: Array.from(selectedRecipients),
+        senderId: senderRole
       }
 
       const result = await forwardDocument(payload, documentData, attachmentsMap)
@@ -145,19 +154,19 @@ export function ForwardDocumentModal({
         <div>
           <div className="flex items-center gap-2 mb-2.5">
             <Users className="w-3.5 h-3.5 text-slate-600" />
-            <label className="text-sm font-medium text-slate-900">Select Recipients (P2-P10)</label>
+            <label className="text-sm font-medium text-slate-900">Select Recipients</label>
             <Button
               variant="ghost"
               size="sm"
               onClick={handleSelectAll}
               className="ml-auto text-xs"
             >
-              {selectedRecipients.size === RECIPIENT_ROLES.length ? 'Deselect All' : 'Select All'}
+              {selectedRecipients.size === availableRecipients.length ? 'Deselect All' : 'Select All'}
             </Button>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            {RECIPIENT_ROLES.map(role => (
+            {availableRecipients.map(role => (
               <label key={role} className="flex items-center gap-2 p-2.5 border rounded-lg hover:bg-slate-50 cursor-pointer">
                 <input
                   type="checkbox"

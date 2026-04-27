@@ -25,11 +25,9 @@ export default function InboxPage() {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
   const [expandedItem, setExpandedItem] = useState<InboxItem | null>(null)
   const [savingItem, setSavingItem] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'received' | 'sent'>('received')
 
-  const isP1 = user?.role === 'P1'
-  const isRecipient = !isP1
-
-  // Fetch inbox items
+  // Fetch inbox items (both sent and received)
   useEffect(() => {
     if (!user) return
 
@@ -38,7 +36,7 @@ export default function InboxPage() {
       const baseQuery = supabase
         .from('inbox_items')
         .select('*')
-        .eq(isP1 ? 'sender_id' : 'recipient_id', user.role)
+        .eq(viewMode === 'sent' ? 'sender_id' : 'recipient_id', user.role)
 
       let { data, error } = await baseQuery.order('forwarded_at', { ascending: false })
 
@@ -57,12 +55,12 @@ export default function InboxPage() {
     }
 
     fetchItems()
-  }, [user, isP1])
+  }, [user, viewMode])
 
   // Realtime updates
   useRealtimeTable('inbox_items', {
     onInsert: (row) => {
-      if ((isP1 && row.sender_id === user?.role) || (!isP1 && row.recipient_id === user?.role)) {
+      if ((viewMode === 'sent' && row.sender_id === user?.role) || (viewMode === 'received' && row.recipient_id === user?.role)) {
         setItems(prev => [row as InboxItem, ...prev])
       }
     },
@@ -121,16 +119,16 @@ export default function InboxPage() {
   }
 
   const recallItem = async (itemId: string) => {
-    // For P1 to recall sent items
+    // Any sender can recall their sent items
     const { error } = await supabase
       .from('inbox_items')
       .delete()
       .eq('id', itemId)
-      .eq('sender_id', 'P1')
+      .eq('sender_id', user?.role)
 
     if (!error) {
       setItems(prev => prev.filter(item => item.id !== itemId))
-      await logAction('recall_inbox_item', `Recalled inbox item`, 'P1')
+      await logAction('recall_inbox_item', `Recalled inbox item`, user?.role)
     }
   }
 
@@ -146,15 +144,39 @@ export default function InboxPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={isP1 ? "Sent Items" : "Inbox"}
-      />
+      <div className="space-y-4">
+        <PageHeader title="Forwarded Documents" />
+        
+        {/* View Mode Tabs */}
+        <div className="flex items-center gap-2 border-b border-slate-200">
+          <button
+            onClick={() => setViewMode('received')}
+            className={`px-4 py-2 border-b-2 font-medium transition-colors ${
+              viewMode === 'received'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Inbox
+          </button>
+          <button
+            onClick={() => setViewMode('sent')}
+            className={`px-4 py-2 border-b-2 font-medium transition-colors ${
+              viewMode === 'sent'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Sent Items
+          </button>
+        </div>
+      </div>
 
       {items.length === 0 ? (
         <EmptyState
           icon="📥"
-          title={isP1 ? "No sent items" : "Inbox empty"}
-          description={isP1 ? "Documents you forward will appear here" : "Forwarded documents will appear here"}
+          title={viewMode === 'sent' ? "No sent items" : "Inbox empty"}
+          description={viewMode === 'sent' ? "Documents you forward will appear here" : "Forwarded documents will appear here"}
         />
       ) : (
         <>
@@ -189,7 +211,7 @@ export default function InboxPage() {
               <InboxItemCard
                 key={item.id}
                 item={item}
-                isP1={isP1}
+                viewMode={viewMode}
                 isSelected={selectedItems.has(item.id)}
                 onSelect={() => {
                   setSelectedItems(prev => {
@@ -204,8 +226,8 @@ export default function InboxPage() {
                 }}
                 onExpand={() => setExpandedItem(item)}
                 onMarkRead={() => markAsRead(item.id)}
-                onSave={isRecipient ? (page) => saveToPage(item, page) : undefined}
-                onRecall={isP1 ? () => recallItem(item.id) : undefined}
+                onSave={viewMode === 'received' ? (page) => saveToPage(item, page) : undefined}
+                onRecall={viewMode === 'sent' ? () => recallItem(item.id) : undefined}
                 saving={savingItem === item.id}
               />
             ))}
@@ -217,10 +239,10 @@ export default function InboxPage() {
       {expandedItem && (
         <InboxItemModal
           item={expandedItem}
-          isP1={isP1}
+          viewMode={viewMode}
           onClose={() => setExpandedItem(null)}
-          onSave={isRecipient ? (page) => saveToPage(expandedItem, page) : undefined}
-          onRecall={isP1 ? () => recallItem(expandedItem.id) : undefined}
+          onSave={viewMode === 'received' ? (page) => saveToPage(expandedItem, page) : undefined}
+          onRecall={viewMode === 'sent' ? () => recallItem(expandedItem.id) : undefined}
           saving={savingItem === expandedItem.id}
         />
       )}
@@ -230,7 +252,7 @@ export default function InboxPage() {
 
 interface InboxItemCardProps {
   item: InboxItem
-  isP1: boolean
+  viewMode: 'received' | 'sent'
   isSelected: boolean
   onSelect: () => void
   onExpand: () => void
@@ -242,7 +264,7 @@ interface InboxItemCardProps {
 
 function InboxItemCard({
   item,
-  isP1,
+  viewMode,
   isSelected,
   onSelect,
   onExpand,
@@ -287,7 +309,7 @@ function InboxItemCard({
           </div>
 
           <div className="text-sm text-slate-600 mb-2">
-            {isP1 ? (
+            {viewMode === 'sent' ? (
               <>Sent to {item.recipient_id} • {itemDate ? new Date(itemDate).toLocaleString('en-PH', { 
                 year: 'numeric', 
                 month: 'short', 
@@ -365,14 +387,14 @@ function InboxItemCard({
 
 interface InboxItemModalProps {
   item: InboxItem
-  isP1: boolean
+  viewMode: 'received' | 'sent'
   onClose: () => void
   onSave?: (page: 'master' | 'admin_order' | 'daily_journal' | 'library') => void
   onRecall?: () => void
   saving: boolean
 }
 
-function InboxItemModal({ item, isP1, onClose, onSave, onRecall, saving }: InboxItemModalProps) {
+function InboxItemModal({ item, viewMode, onClose, onSave, onRecall, saving }: InboxItemModalProps) {
   const attachments = JSON.parse(item.attachments || '[]')
   const itemDate = item.forwarded_at ?? item.created_at
 
@@ -392,10 +414,10 @@ function InboxItemModal({ item, isP1, onClose, onSave, onRecall, saving }: Inbox
           </div>
           <div>
             <label className="text-sm font-medium text-slate-700">
-              {isP1 ? 'Sent to' : 'From'}
+              {viewMode === 'sent' ? 'Sent to' : 'From'}
             </label>
             <p className="text-sm text-slate-900">
-              {isP1 ? item.recipient_id : item.sender_id}
+              {viewMode === 'sent' ? item.recipient_id : item.sender_id}
             </p>
           </div>
           <div>

@@ -37,7 +37,8 @@ export function canArchiveDocuments(role: AdminRole): boolean {
 }
 
 export function canForwardDocuments(role: AdminRole): boolean {
-  return role === 'P1'
+  // All non-admin roles (P1-P10) can forward documents
+  return ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10'].includes(role)
 }
 
 export function canReviewDocuments(role: AdminRole): boolean {

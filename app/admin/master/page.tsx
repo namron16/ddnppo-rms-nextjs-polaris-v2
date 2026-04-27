@@ -1375,6 +1375,7 @@ export default function MasterPage() {
           documentData={selection}
           attachmentsMap={attachmentsMap}
           onForwarded={() => setForwardModalOpen(false)}
+          senderRole={user?.role as AdminRole}
         />
       )}
 

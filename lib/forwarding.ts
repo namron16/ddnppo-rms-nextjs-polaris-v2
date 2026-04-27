@@ -7,7 +7,8 @@ export interface ForwardPayload {
   documentType: 'master' | 'admin_order' | 'daily_journal' | 'library'
   documentId: string
   documentTitle: string
-  recipients: AdminRole[]  // one or more of P2–P10
+  recipients: AdminRole[]  // one or more roles (e.g., P2–P10)
+  senderId: AdminRole      // the role forwarding the document
   note?: string
 }
 
@@ -40,7 +41,7 @@ export function buildAttachmentTree(
 }
 
 /**
- * P1 forwards a document to one or more recipient accounts.
+ * Forwards a document from a sender to one or more recipient accounts.
  * Creates one inbox_item row per recipient.
  * Full document hierarchy (parent + all nested attachments) is serialized into the row.
  */
@@ -55,7 +56,7 @@ export async function forwardDocument(
   const baseRows = payload.recipients.map(recipient => ({
     id: `fwd-${Date.now()}-${recipient}-${Math.random().toString(36).slice(2)}`,
     recipient_id: recipient,
-    sender_id: 'P1',
+    sender_id: payload.senderId,
     document_type: payload.documentType,
     document_id: payload.documentId,
     document_title: payload.documentTitle,
@@ -88,7 +89,7 @@ export async function forwardDocument(
   // Log the forward action
   for (const recipient of payload.recipients) {
     await logAction('forward_document', 
-      `P1 forwarded "${payload.documentTitle}" to ${recipient}`, 'P1')
+      `${payload.senderId} forwarded "${payload.documentTitle}" to ${recipient}`, payload.senderId)
   }
 
   return { success: true, count: baseRows.length }
