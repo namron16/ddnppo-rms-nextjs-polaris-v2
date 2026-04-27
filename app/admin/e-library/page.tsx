@@ -13,7 +13,7 @@ import { Modal }                 from '@/components/ui/Modal'
 import { useSearch, useModal, useDisclosure } from '@/hooks'
 import { useRealtimeLibraryItems } from '@/hooks/useRealtimeCollections'
 import { useToast }              from '@/components/ui/Toast'
-import { Paperclip } from 'lucide-react'
+import { Paperclip, Eye, PencilLine, Trash2, Download } from 'lucide-react'
 import { logDeleteDocument, logViewDocument }       from '@/lib/adminLogger'
 import {
   getLibraryItems,
@@ -836,22 +836,50 @@ export default function LibraryPage() {
                               viewDisc.open(item)
                               logViewDocument(item.title).catch(() => {})
                             }}
+                            title="View item details"
                           >
-                            👁
+                            <Eye size={16} className="text-slate-600" />
                           </Button>
-                          {isSuperAdmin && (
-                            <Button variant="ghost" size="sm" onClick={() => editDisc.open(item)}>✏️</Button>
+                          {canEdit && (
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => editDisc.open(item)}
+                              title="Edit item"
+                            >
+                              <PencilLine size={16} className="text-slate-600" />
+                            </Button>
                           )}
-                          {isSuperAdmin && (
-                            <Button variant="ghost" size="sm" onClick={() => deleteDisc.open(item)}>🗑️</Button>
+                          {canDelete && (
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => deleteDisc.open(item)}
+                              title="Delete item"
+                            >
+                              <Trash2 size={16} className="text-slate-600" />
+                            </Button>
                           )}
                           {item.fileUrl && (
                             <a href={item.fileUrl} download target="_blank" rel="noopener noreferrer">
-                              <Button variant="ghost" size="sm">⬇</Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                title="Download file"
+                              >
+                                <Download size={16} className="text-slate-600" />
+                              </Button>
                             </a>
                           )}
-                          {isSuperAdmin && (
-                            <Button variant="ghost" size="sm" onClick={() => archiveDisc.open(item)}>🗄️</Button>
+                          {canArchive && (
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => archiveDisc.open(item)}
+                              title="Archive item"
+                            >
+                              <span className="text-lg">🗄️</span>
+                            </Button>
                           )}
                         </div>
                       </td>
@@ -879,7 +907,7 @@ export default function LibraryPage() {
         onPrint={handlePrintFile}
       />
 
-      {isSuperAdmin && (
+      {canEdit && (
         <EditLibraryItemModal
           item={editDisc.payload ?? null}
           open={editDisc.isOpen}
@@ -888,7 +916,19 @@ export default function LibraryPage() {
         />
       )}
 
-      {isSuperAdmin && (
+      {canDelete && (
+        <ConfirmDialog
+          open={deleteDisc.isOpen}
+          title="Delete Library Item"
+          message={`Permanently delete "${deleteDisc.payload?.title}"? This action cannot be undone.`}
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={handleDelete}
+          onCancel={deleteDisc.close}
+        />
+      )}
+
+      {canArchive && (
         <ConfirmDialog
           open={archiveDisc.isOpen}
           title="Archive Library Item"
@@ -900,15 +940,6 @@ export default function LibraryPage() {
         />
       )}
 
-      <ConfirmDialog
-        open={deleteDisc.isOpen}
-        title="Delete Library Item"
-        message={`Delete "${deleteDisc.payload?.title}" permanently? This cannot be undone.`}
-        confirmLabel="Delete"
-        variant="danger"
-        onConfirm={handleDelete}
-        onCancel={deleteDisc.close}
-      />
-    </>
+      </>
   )
 }
