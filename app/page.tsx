@@ -5,6 +5,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
+import { getDefaultAdminRoute } from '@/lib/adminRouteAccess'
 
 export default function RootPage() {
   const { user } = useAuth()
@@ -14,7 +15,7 @@ export default function RootPage() {
     if (!user) {
       router.replace('/login')
     } else {
-      router.replace('/admin/master')
+      router.replace(getDefaultAdminRoute(user.role))
     }
   }, [user, router])
 

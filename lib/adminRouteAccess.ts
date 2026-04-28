@@ -40,7 +40,7 @@ const ADMIN_ROUTES = [
 const P1_ONLY_ROUTES: readonly string[] = []
 
 const ROLE_DEFAULT_ROUTE: Record<SessionRole, string> = {
-  admin: '/admin/master',
+  admin: '/admin/log-history',
   PD: '/admin/master',
   DPDA: '/admin/master',
   DPDO: '/admin/master',
@@ -66,11 +66,13 @@ export function getDefaultAdminRoute(role: SessionRole): string {
 
 export function getAllowedAdminRoutes(role: SessionRole): string[] {
   const viewerRoles = ['P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10'] as const
-  const docs = role === 'P2'
-    ? [...P2_DOC_ROUTES]
-    : viewerRoles.includes(role as typeof viewerRoles[number])
-      ? [...VIEWER_DOC_ROUTES]
-      : [...DOC_ROUTES]
+    const docs = role === 'admin'
+    ? []
+    : role === 'P2'
+      ? [...P2_DOC_ROUTES]
+      : viewerRoles.includes(role as typeof viewerRoles[number])
+        ? [...VIEWER_DOC_ROUTES]
+        : [...DOC_ROUTES]
   const admin = role === 'admin' ? [...ADMIN_ROUTES] : []
   const p1Only = role === 'P1' ? [...P1_ONLY_ROUTES] : []
   return uniqueRoutes([...docs, ...admin, ...p1Only])

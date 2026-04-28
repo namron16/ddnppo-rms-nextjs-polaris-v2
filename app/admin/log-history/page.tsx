@@ -204,10 +204,12 @@ export default function LogHistoryPage() {
   }
 
   const allAdminIds  = Array.from(new Set(logs.map(l => l.admin_id))).sort()
+  const hiddenLabels = new Set(['Approve', 'Approve Request', 'Create', 'Recall', 'Reject', 'Review'])
   const actionOptions = Array.from(new Set(
     Object.keys(ACTION_CONFIG)
       .filter(action => action !== 'reject_request' && action !== 'request_access')
       .map(action => ACTION_CONFIG[action].label)
+      .filter(label => !hiddenLabels.has(label))
   )).sort()
 
   return (
