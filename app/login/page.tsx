@@ -185,6 +185,8 @@ export default function LoginPage() {
             </summary>
             <div className="mt-2 p-3 bg-slate-50 border border-slate-100 rounded-lg text-[10px] text-slate-500 space-y-1 text-left inline-block">
               <p><strong>Admin</strong>: admin@ddnppo2024</p>
+              <p><strong>DPDA</strong>: dpda@ddnppo2024</p>
+              <p><strong>DPDO</strong>: dpdo@ddnppo2024</p>
               <p><strong>P1</strong>: p1@ddnppo2024</p>
               <p><strong>P2–P10</strong>: p2@ddnppo2024 … p10@ddnppo2024</p>
             </div>

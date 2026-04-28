@@ -12,7 +12,7 @@ import { getStoredProfilePrefs } from './profileStorage'
 import { subscribeToProfilePrefs } from './profileStorage'
 
 // ── Role Definitions ──────────────────────────
-export type AdminRole = 'admin' | 'P1'
+export type AdminRole = 'admin' | 'DPDA' | 'DPDO' | 'P1'
   | 'P2' | 'P3' | 'P4' | 'P5' | 'P6'
   | 'P7' | 'P8' | 'P9' | 'P10'
 
@@ -43,8 +43,21 @@ export const ADMIN_ACCOUNTS: AdminUser[] = [
     id: 'admin', role: 'admin',
     name: 'Super Admin', title: 'Super Admin',
     level: 'super_admin', initials: 'ad', avatarColor: '#dc2626',
-    permissions: { canUpload: true, canApproveReview: true, canApproveFinal: true, canManageUsers: true, canManageVisibility: true, canViewAll: true },
+    permissions: { canUpload: false, canApproveReview: false, canApproveFinal: false, canManageUsers: true, canManageVisibility: false, canViewAll: true },
   },
+  {
+    id: 'DPDA', role: 'DPDA',
+    name: 'Deputy Director for Administration', title: 'Deputy Director for Administration',
+    level: 'deputy', initials: 'DPDA', avatarColor: '#0d9488',
+    permissions: { canUpload: false, canApproveReview: true, canApproveFinal: false, canManageUsers: false, canManageVisibility: false, canViewAll: true },
+  },
+  {
+    id: 'DPDO', role: 'DPDO',
+    name: 'Deputy Director for Operations', title: 'Deputy Director for Operations',
+    level: 'deputy', initials: 'DPDO', avatarColor: '#16a34a',
+    permissions: { canUpload: false, canApproveReview: true, canApproveFinal: false, canManageUsers: false, canManageVisibility: false, canViewAll: true },
+  },
+  
   {
     id: 'P1', role: 'P1',
     name: 'Records Officer — P1', title: 'Records Officer',
@@ -62,7 +75,7 @@ export const ADMIN_ACCOUNTS: AdminUser[] = [
 
 // Password map
 const PASSWORDS: Record<AdminRole, string> = {
-  admin: 'admin@ddnppo2024', P1: 'p1@ddnppo2024', P2: 'p2@ddnppo2024', P3: 'p3@ddnppo2024',
+  admin: 'admin@ddnppo2024', DPDA: 'dpda@ddnppo2024', DPDO: 'dpdo@ddnppo2024', P1: 'p1@ddnppo2024', P2: 'p2@ddnppo2024', P3: 'p3@ddnppo2024',
   P4: 'p4@ddnppo2024', P5: 'p5@ddnppo2024', P6: 'p6@ddnppo2024',
   P7: 'p7@ddnppo2024', P8: 'p8@ddnppo2024', P9: 'p9@ddnppo2024',
   P10: 'p10@ddnppo2024',

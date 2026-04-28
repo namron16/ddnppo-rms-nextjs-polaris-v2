@@ -1022,6 +1022,7 @@ function OrderListNode({
 export default function AdminOrdersPage() {
   const { toast } = useToast()
   const { user } = useAuth()
+  const canEditOrder = user ? !['DPDA', 'DPDO'].includes(user.role) : false
 
   const [orders,         setOrders]         = useState<SOWithUrl[]>([])
   const [query,          setQuery]          = useState('')
@@ -1431,7 +1432,7 @@ export default function AdminOrdersPage() {
                     onForwardOrder={() => setForwardModalOpen(true)}
                     onArchiveOrder={() => selectedOrder && archiveDisc.open(selectedOrder)}
                     onDeleteOrder={() => selectedOrder && deleteDisc.open(selectedOrder)}
-                    canEditOrder={true}
+                    canEditOrder={canEditOrder}
                     onEditOrder={() => selectedOrder && editOrderDisc.open(selectedOrder)}
                     onViewFile={handleViewFile}
                     onDownloadFile={handleDownloadFile}

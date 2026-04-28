@@ -33,7 +33,6 @@ import {
 } from '@/lib/rbac'
 import { logDeleteDocument, logViewDocument } from '@/lib/adminLogger'
 import {
-  canReviewDocuments, canFinalApprove,
   hasFullDocumentAccess, ROLE_META,
 } from '@/lib/permissions'
 import type { MasterDocument, DocLevel } from '@/types'
@@ -44,13 +43,15 @@ type DocWithUrl = MasterDocument & { fileUrl?: string }
 type DocEnriched = DocWithUrl & {
   approval?: DocumentApproval | null
   created_at?: string
+  // FIX 1: Add children typing so flattenDocs doesn't error
+  children?: DocEnriched[]
 }
 
 type AttachmentNavEntry =
   | { kind: 'document'; doc: DocEnriched }
   | { kind: 'attachment'; att: DocAttachment }
 
-// ── Attachment types (same as before) ─────────
+// ── Attachment types ─────────
 export interface DocAttachment {
   id: string; document_id: string; parent_attachment_id: string | null
   file_name: string; file_url: string; file_size: string
@@ -192,7 +193,6 @@ async function printFileFromUrl(fileUrl: string): Promise<void> {
       })
     }, 15000)
 
-    // First fetch the file as blob to create same-origin URL
     fetch(fileUrl)
       .then(response => {
         if (!response.ok) throw new Error(`Failed to fetch file: ${response.status}`)
@@ -358,7 +358,9 @@ function EditModal({ doc, open, onClose, onSave }: {
   const [level, setLevel] = useState<DocLevel>('REGIONAL')
   const [date,  setDate]  = useState('')
   const [type,  setType]  = useState('PDF')
-  useMemo(() => {
+
+  // FIX 2: useEffect instead of useMemo for side-effects (setting state)
+  useEffect(() => {
     if (doc) {
       setTitle(doc.title)
       setLevel(doc.level)
@@ -366,6 +368,7 @@ function EditModal({ doc, open, onClose, onSave }: {
       setType(doc.type)
     }
   }, [doc])
+
   function submit() {
     if (!title.trim()) { toast.error('Title is required.'); return }
     if (!doc) return
@@ -397,7 +400,7 @@ function EditModal({ doc, open, onClose, onSave }: {
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-widests text-slate-500 mb-1.5">Date</label>
+            <label className="block text-[11px] font-semibold uppercase tracking-widest text-slate-500 mb-1.5">Date</label>
             <input type="date" className={cls} value={date} onChange={e => setDate(e.target.value)} />
           </div>
           <div>
@@ -410,8 +413,6 @@ function EditModal({ doc, open, onClose, onSave }: {
             </select>
           </div>
         </div>
-
-
         <div className="flex justify-end gap-2.5">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button variant="primary" onClick={submit}>💾 Save</Button>
@@ -465,8 +466,9 @@ export default function MasterPage() {
   const [attachmentNavStack, setAttachmentNavStack] = useState<AttachmentNavEntry[]>([])
 
   // Role flags
-  const isP1       = user?.role === 'P1'
-  const isPrivileged = user ? hasFullDocumentAccess(user.role) : false
+  const isP1            = user?.role === 'P1'
+  const isPrivileged    = user ? hasFullDocumentAccess(user.role) : false
+  const canModifyDocuments = user ? !['DPDA', 'DPDO'].includes(user.role) : false
 
   useRealtimeMasterDocs({
     setDocuments,
@@ -501,7 +503,6 @@ export default function MasterPage() {
   ) => {
     try {
       await printFileFromUrl(fileUrl)
-
       toast.success(`Opened print preview for "${fileName}".`)
     } catch (error) {
       console.error('print error:', error)
@@ -521,7 +522,6 @@ export default function MasterPage() {
         )
         const activeDocs = docs.filter((d: DocWithUrl) => !archivedIds.has(d.id))
 
-        // Enrich with approvals
         const enriched: DocEnriched[] = await Promise.all(
           activeDocs.map(async (doc: DocWithUrl) => {
             const approval = await getApproval(doc.id, 'master')
@@ -530,7 +530,6 @@ export default function MasterPage() {
         )
         setDocuments(enriched)
 
-        // Load attachments
         if (docs.length > 0) {
           const { data: allAtts } = await supabase
             .from('master_document_attachments')
@@ -551,7 +550,6 @@ export default function MasterPage() {
 
         if (enriched.length > 0) setSelection(enriched[0])
 
-       
       } catch (err) {
         console.error('loadAll error:', err)
       } finally {
@@ -589,17 +587,11 @@ export default function MasterPage() {
   async function handleSave(updated: DocWithUrl) {
     await updateMasterDocument(updated)
     setDocuments(prev => prev.map(d => d.id === updated.id
-      ? {
-          ...d,
-          ...updated,
-        }
+      ? { ...d, ...updated }
       : d
     ))
     if (selection?.id === updated.id) {
-      setSelection(prev => prev ? {
-        ...prev,
-        ...updated,
-      } : prev)
+      setSelection(prev => prev ? { ...prev, ...updated } : prev)
     }
     toast.success('Document updated.')
     editModal.close()
@@ -619,8 +611,6 @@ export default function MasterPage() {
 
   async function handleDeleteDoc() {
     if (!selection) return
-  
-
     const doc = selection
     await deleteMasterDocument(doc.id)
     await logDeleteDocument(doc.title, 'master document', user?.role as AdminRole)
@@ -631,8 +621,6 @@ export default function MasterPage() {
   }
 
   async function handleUpload(parentDocId: string, parentAttId: string | null, files: FileList) {
-    // Backend guard: check upload permissions
-    
     setUploadingId(parentAttId ?? parentDocId)
     let count = 0
     for (const file of Array.from(files)) {
@@ -813,8 +801,6 @@ export default function MasterPage() {
       <PageHeader title="Master Documents" />
 
       <div className="p-6 flex flex-col gap-5 flex-1" style={{ height: 'calc(100vh - 56px)' }}>
-
-
         <div className="bg-white border-[1.5px] border-slate-200 rounded-xl overflow-hidden flex flex-col flex-1 min-h-0">
 
           {/* Toolbar */}
@@ -827,7 +813,6 @@ export default function MasterPage() {
               <option value="STATION">Station</option>
             </ToolbarSelect>
 
-            {/* P1-only upload button */}
             <UploadGuard showDisabled>
               <Button variant="primary" size="sm" className="ml-auto" onClick={uploadModal.open}>
                 + Upload
@@ -872,8 +857,6 @@ export default function MasterPage() {
                         <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: levelColor }} />
                         <span className="flex-1 truncate text-[13px] font-medium">{doc.title}</span>
 
-                       
-
                         {activeCount > 0 && (
                           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
                             selection?.id === doc.id ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-500'
@@ -907,7 +890,6 @@ export default function MasterPage() {
                       icon="📄"
                       title="Select a document"
                       description="Click any document from the list to view its details."
-                      
                     />
                   </div>
                 ) : (
@@ -953,14 +935,14 @@ export default function MasterPage() {
                     </div>
 
                     <div className="flex gap-2 flex-shrink-0 flex-wrap">
-                      {/* Document actions */}
-                      <>
-                        <Button variant="primary" size="sm" onClick={() => setForwardModalOpen(true)}>🔀 Forward</Button>
-                        <Button variant="outline" size="sm" onClick={editModal.open}>✏️ Edit</Button>
-                        <Button variant="danger" size="sm" onClick={() => archiveDisc.open(selection.title)}>🗄️ Archive</Button>
-                        <Button variant="danger" size="sm" onClick={() => deleteDisc.open(selection.title)}>🗑️ Delete</Button>
-                      </>
-                     
+                      {canModifyDocuments && (
+                        <>
+                          <Button variant="primary" size="sm" onClick={() => setForwardModalOpen(true)}>🔀 Forward</Button>
+                          <Button variant="outline" size="sm" onClick={editModal.open}>✏️ Edit</Button>
+                          <Button variant="danger" size="sm" onClick={() => archiveDisc.open(selection.title)}>🗄️ Archive</Button>
+                          <Button variant="danger" size="sm" onClick={() => deleteDisc.open(selection.title)}>🗑️ Delete</Button>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -1004,8 +986,6 @@ export default function MasterPage() {
                       </div>
                     </div>
                   ) : null}
-
-                 
 
                   {/* Attachments */}
                   <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -1251,6 +1231,7 @@ export default function MasterPage() {
                                         <span className="text-xs text-slate-300">—</span>
                                       )}
                                     </td>
+                                    {/* FIX 3: Replace broken object literal with valid JSX */}
                                     <td className="px-4 py-3">
                                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                         {!att.archived ? (
@@ -1289,28 +1270,36 @@ export default function MasterPage() {
                                             >
                                               📂 Open
                                             </button>
-                                            <>
-                                              <button
-                                                onClick={() => { setEditingAttachmentId(att.id); setEditingAttachmentName(att.file_name) }}
-                                                className="text-[10px] font-semibold px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 transition"
-                                              >
-                                                ✏️
-                                              </button>
-                                              <button
-                                                onClick={() => archiveAttDisc.open(att)}
-                                                className="text-[10px] font-semibold px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded hover:bg-amber-100 transition"
-                                              >
-                                                🗄️
-                                              </button>
-                                            </>
+                                            {canModifyDocuments && (
+                                              <>
+                                                <button
+                                                  onClick={() => { setEditingAttachmentId(att.id); setEditingAttachmentName(att.file_name) }}
+                                                  className="text-[10px] font-semibold px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 transition"
+                                                >
+                                                  ✏️
+                                                </button>
+                                                <button
+                                                  onClick={() => archiveAttDisc.open(att)}
+                                                  className="text-[10px] font-semibold px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded hover:bg-amber-100 transition"
+                                                >
+                                                  🗄️
+                                                </button>
+                                              </>
+                                            )}
                                           </>
                                         ) : (
-                                          <button
-                                            onClick={() => handleRestoreAttachment(att)}
-                                            className="text-[10px] font-semibold px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 transition"
-                                          >
-                                            ↩ Restore
-                                          </button>
+                                          // FIX 3: Removed broken JS object literal `{canModifyDocuments ? ... : ...}`
+                                          // and stray `className` attribute; replaced with clean conditional JSX
+                                          canModifyDocuments ? (
+                                            <button
+                                              onClick={() => handleRestoreAttachment(att)}
+                                              className="text-[10px] font-semibold px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 transition"
+                                            >
+                                              ↩ Restore
+                                            </button>
+                                          ) : (
+                                            <span className="text-xs text-slate-300">—</span>
+                                          )
                                         )}
                                       </div>
                                     </td>
@@ -1326,8 +1315,6 @@ export default function MasterPage() {
                   </div>
                 )}
               </div>
-
-             
             </div>
           </div>
         </div>

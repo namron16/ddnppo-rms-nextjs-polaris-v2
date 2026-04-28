@@ -1,4 +1,4 @@
-export type SessionRole = 'admin' | 'P1' | 'P2' | 'P3' | 'P4' | 'P5' | 'P6' | 'P7' | 'P8' | 'P9' | 'P10'
+export type SessionRole = 'admin' | 'PD' | 'DPDA' | 'DPDO' | 'P1' | 'P2' | 'P3' | 'P4' | 'P5' | 'P6' | 'P7' | 'P8' | 'P9' | 'P10'
 
 const DOC_ROUTES = [
   '/admin/master',
@@ -41,6 +41,9 @@ const P1_ONLY_ROUTES: readonly string[] = []
 
 const ROLE_DEFAULT_ROUTE: Record<SessionRole, string> = {
   admin: '/admin/master',
+  PD: '/admin/master',
+  DPDA: '/admin/master',
+  DPDO: '/admin/master',
   P1: '/admin/master',
   P2: '/admin/master',
   P3: '/admin/master',
