@@ -22,6 +22,7 @@ import {
   updateConfidentialDoc,
   deleteConfidentialDoc,
 } from '@/lib/data'
+import { logEditDocument } from '@/lib/adminLogger'
 import { classificationBadgeClass } from '@/lib/utils'
 import {
   getDocumentVisibility,
@@ -468,6 +469,7 @@ export default function ClassifiedDocumentsPage() {
       return false
     }
 
+    await logEditDocument(doc.title)
     return true
   }
 

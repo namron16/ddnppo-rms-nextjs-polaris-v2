@@ -9,6 +9,7 @@ import { Button }     from '@/components/ui/Button'
 import { useToast }   from '@/components/ui/Toast'
 import { useRealtimeOrgMembers } from '@/hooks/useRealtimeCollections'
 import { useAuth }    from '@/lib/auth'
+import { logAddOrgMember, logEditOrgMember } from '@/lib/adminLogger'
 import { supabase }   from '@/lib/supabase'
 
 // ── Types ──────────────────────────────────────
@@ -997,9 +998,11 @@ export default function OrganizationPage() {
     if (editTarget) {
       setMembers(prev => prev.map(m => m.id === editTarget.id ? { ...m, ...data } : m))
       toast.success('Member updated.')
+      logEditOrgMember(data.name, user?.role)
     } else {
       setMembers(prev => [...prev, { ...data, id: `org-${Date.now()}` }])
       toast.success(`${data.name} added to the org chart.`)
+      logAddOrgMember(data.name, user?.role)
     }
     setSelected(null)
   }

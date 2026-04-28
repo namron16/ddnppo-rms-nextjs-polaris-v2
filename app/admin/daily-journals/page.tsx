@@ -13,7 +13,7 @@ import { useToast } from '@/components/ui/Toast'
 import { AddJournalEntryModal } from '@/components/modals/AddJournalEntryModal'
 import { useDisclosure, useModal, useSearch } from '@/hooks'
 import { useRealtimeDailyJournals } from '@/hooks/useRealtimeCollections'
-import { logDeleteDocument, logViewDocument } from '@/lib/adminLogger'
+import { logDeleteDocument, logEditJournal, logViewDocument } from '@/lib/adminLogger'
 import { useAuth } from '@/lib/auth'
 import type { AdminRole } from '@/lib/auth'
 import type { AddJournalEntryInput } from '@/lib/validations'
@@ -350,6 +350,7 @@ export default function DailyJournalsPage() {
       }
 
       await updateDailyJournal(updatedEntry)
+      await logEditJournal(updatedEntry.title)
       setEntries(prev => prev.map(entry => entry.id === updatedEntry.id ? updatedEntry : entry))
       if (viewDisc.payload?.id === updatedEntry.id) {
         viewDisc.open(updatedEntry)

@@ -14,7 +14,7 @@ import { useSearch, useModal, useDisclosure } from '@/hooks'
 import { useRealtimeLibraryItems } from '@/hooks/useRealtimeCollections'
 import { useToast }              from '@/components/ui/Toast'
 import { Paperclip, Eye, PencilLine, Trash2, Download } from 'lucide-react'
-import { logDeleteDocument, logViewDocument }       from '@/lib/adminLogger'
+import { logDeleteDocument, logEditLibraryItem, logViewDocument } from '@/lib/adminLogger'
 import {
   getLibraryItems,
   addLibraryItem,
@@ -655,6 +655,7 @@ export default function LibraryPage() {
     }
 
     await updateLibraryItem(updated)
+    await logEditLibraryItem(updated.title)
     setItems(prev => prev.map(item => item.id === updated.id ? updated : item))
     if (viewDisc.payload?.id === updated.id) {
       viewDisc.open(updated)

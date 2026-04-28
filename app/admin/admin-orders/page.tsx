@@ -27,7 +27,7 @@ import {
 } from '@/lib/data'
 import { supabase }             from '@/lib/supabase'
 import { statusBadgeClass }     from '@/lib/utils'
-import { logDeleteDocument, logViewDocument }      from '@/lib/adminLogger'
+import { logAction, logDeleteDocument, logRenameAttachment, logViewDocument }      from '@/lib/adminLogger'
 import { useAuth } from '@/lib/auth'
 import type { AdminRole } from '@/lib/auth'
 import { useRealtimeSpecialOrders } from '@/hooks/useRealtimeSpecialOrders'
@@ -1212,6 +1212,7 @@ export default function AdminOrdersPage() {
 
   async function handleSaveOrder(updatedOrder: SOWithUrl) {
     await updateSpecialOrder(updatedOrder)
+    await logAction('edit_document', `Edited special order "${updatedOrder.reference} - ${updatedOrder.subject}"`, user?.role as AdminRole)
     setOrders(prev => prev.map(order => order.id === updatedOrder.id ? updatedOrder : order))
     if (selectedOrder?.id === updatedOrder.id) {
       setSelectedOrder(updatedOrder)
@@ -1274,6 +1275,7 @@ export default function AdminOrdersPage() {
     const ok = await dbRenameAttachment(att.id, trimmed)
     if (!ok) { toast.error('Failed to rename attachment.'); return false }
 
+    await logRenameAttachment(att.file_name, trimmed, user?.role)
     const mapKey = att.parent_attachment_id ?? att.special_order_id
     setAttachmentsMap(prev => {
       const next = new Map(prev)
