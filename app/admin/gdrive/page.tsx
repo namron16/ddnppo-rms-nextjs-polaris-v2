@@ -408,7 +408,7 @@ export default function GDriveAdminPage() {
             { icon: '🔗', label: 'Connected Accounts', value: q ? `${q.healthyAccounts}/${q.totalAccounts}` : '—', color: 'bg-blue-50' },
             { icon: '💾', label: 'Total Storage Used',  value: s ? `${s.total_used_gb} GB`    : '—', color: 'bg-violet-50' },
             { icon: '📦', label: 'Total Capacity',      value: s ? `${s.total_quota_gb} GB`   : '—', color: 'bg-emerald-50' },
-            { icon: '📄', label: 'Total Files',         value: s ? s.total_files.toLocaleString() : '—', color: 'bg-amber-50' },
+            { icon: '📄', label: 'Total Files', value: s ? (s.total_files ?? 0).toLocaleString() : '—', color: 'bg-amber-50' },
           ].map(card => (
             <div key={card.label} className="bg-white border border-slate-200 rounded-xl p-4 flex items-center gap-3">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${card.color}`}>
@@ -580,7 +580,7 @@ export default function GDriveAdminPage() {
           <p className="font-bold mb-1">ℹ️ How to Connect a Google Drive Account</p>
           <p>1. Click <strong>Connect Google Drive</strong> on an unconnected account card above.</p>
           <p>2. The user (P1–P10) signs in to their personal Google account and grants access.</p>
-          <p>3. The system creates a <strong>DDNPPO RMS</strong> folder in their Drive and stores the tokens securely.</p>
+          <p>3. The system creates a <strong>DNPPO RMS</strong> folder in their Drive and stores the tokens securely.</p>
           <p>4. Uploads are automatically distributed to the account with the most available space.</p>
           <p className="pt-1 text-blue-600">
             ⚡ Total capacity: {USERNAMES.length} accounts × 15 GB = <strong>150 GB</strong> (expandable by upgrading individual accounts).

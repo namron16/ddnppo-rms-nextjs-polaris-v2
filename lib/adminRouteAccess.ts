@@ -34,7 +34,7 @@ const P2_DOC_ROUTES = [
 const ADMIN_ROUTES = [
   '/admin/log-history',
   '/admin/user-management',
-  
+  '/admin/gdrive',
 ] as const
 
 const P1_ONLY_ROUTES: readonly string[] = []
