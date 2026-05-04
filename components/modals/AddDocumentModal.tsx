@@ -1,18 +1,15 @@
 'use client'
-// components/modals/AddDocumentModal.tsx  (v2)
-// P1-only upload modal with integrated VisibilityTagSelector
-// Backend guard: assertCanUpload() throws if not P1
+// components/modals/AddDocumentModal.tsx  (v3 — Drive Pool upload)
+// P1-only upload modal. Uses useDriveUpload() instead of supabase.storage.
 
 import { useState, useRef } from 'react'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
-import { supabase } from '@/lib/supabase'
 import { AddDocumentSchema, zodErrors } from '@/lib/validations'
-import {
-  assertCanUpload,
-} from '@/lib/rbac'
+import { assertCanUpload } from '@/lib/rbac'
 import { useAuth } from '@/lib/auth'
+import { useDriveUpload } from '@/hooks/useGDriveTool'
 import type { MasterDocument } from '@/types'
 import type { AdminRole } from '@/lib/auth'
 
@@ -30,9 +27,11 @@ export function AddDocumentModal({ open, onClose, onAdd }: AddDocumentModalProps
   const fileInputRef = useRef<HTMLInputElement>(null)
   const today = new Date().toISOString().split('T')[0]
 
+  // ── Drive Pool hook ──────────────────────────────────────────────────────
+  const { uploadToDrive, uploading, error: uploadError } = useDriveUpload()
+
   const [file, setFile]           = useState<File | null>(null)
   const [dragging, setDragging]   = useState(false)
-  const [uploading, setUploading] = useState(false)
   const [errors, setErrors]       = useState<Record<string, string>>({})
   const [taggedRoles, setTaggedRoles] = useState<AdminRole[]>([])
 
@@ -68,7 +67,6 @@ export function AddDocumentModal({ open, onClose, onAdd }: AddDocumentModalProps
   }
 
   async function handleSubmit() {
-    // ── BACKEND GUARD: only P1 may upload ──
     if (!user) { toast.error('Not authenticated.'); return }
     try {
       assertCanUpload(user.role)
@@ -87,23 +85,24 @@ export function AddDocumentModal({ open, onClose, onAdd }: AddDocumentModalProps
     }
 
     setErrors({})
-    setUploading(true)
 
     try {
-      let fileUrl: string | undefined
-      let fileSize = '—'
-
-      const fileName = `master-docs/${Date.now()}-${file.name.replace(/\s+/g, '_')}`
-      const { data: storageData, error: storageError } = await supabase.storage
-        .from('documents')
-        .upload(fileName, file, { cacheControl: '3600', upsert: false })
-
-      if (storageError) { toast.error('File upload failed. Please try again.'); setUploading(false); return }
-      const { data: urlData } = supabase.storage.from('documents').getPublicUrl(storageData.path)
-      fileUrl  = urlData.publicUrl
-      fileSize = (file.size / 1024 / 1024).toFixed(1) + ' MB'
-
       const newDocId = `md-${Date.now()}`
+
+      // ── Drive Pool upload (replaces supabase.storage) ─────────────────
+      const fileUrl = await uploadToDrive(file, 'master_documents', {
+        uploadedBy: user.role,
+        entityId:   newDocId,
+        entityType: 'master_document',
+      })
+
+      if (!fileUrl) {
+        toast.error(uploadError ?? 'File upload failed. Please try again.')
+        return
+      }
+
+      const fileSize = (file.size / 1024 / 1024).toFixed(1) + ' MB'
+
       const newDoc: DocWithUrl = {
         id:      newDocId,
         title:   result.data.title,
@@ -127,8 +126,6 @@ export function AddDocumentModal({ open, onClose, onAdd }: AddDocumentModalProps
     } catch (err) {
       console.error(err)
       toast.error('Something went wrong. Please try again.')
-    } finally {
-      setUploading(false)
     }
   }
 
@@ -184,14 +181,14 @@ export function AddDocumentModal({ open, onClose, onAdd }: AddDocumentModalProps
         {/* Date + Type */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-widests text-slate-500 mb-1.5">
+            <label className="block text-[11px] font-semibold uppercase tracking-widest text-slate-500 mb-1.5">
               Document Date <span className="text-red-500">*</span>
             </label>
             <input type="date" className={cls('date')} value={form.date} onChange={e => handleChange('date', e.target.value)} disabled={uploading} />
             {errors.date && <p className="text-xs text-red-500 mt-1 font-medium">⚠ {errors.date}</p>}
           </div>
           <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-widests text-slate-500 mb-1.5">File Type</label>
+            <label className="block text-[11px] font-semibold uppercase tracking-widest text-slate-500 mb-1.5">File Type</label>
             <select className={cls('type')} value={form.type} onChange={e => handleChange('type', e.target.value)} disabled={uploading}>
               <option value="PDF">PDF</option>
               <option value="Image">Image</option>
@@ -199,7 +196,6 @@ export function AddDocumentModal({ open, onClose, onAdd }: AddDocumentModalProps
           </div>
         </div>
 
-       
         {/* File upload */}
         <input ref={fileInputRef} type="file"
           accept=".pdf,.jpg,.jpeg,.png"
@@ -234,19 +230,16 @@ export function AddDocumentModal({ open, onClose, onAdd }: AddDocumentModalProps
             } ${uploading ? 'pointer-events-none opacity-50' : ''}`}>
             <div className="text-3xl mb-2">📁</div>
             <p className="text-sm font-medium text-slate-600 mb-1">Click to browse or drag &amp; drop</p>
-            <p className="text-xs text-slate-400">PDF, DOCX, XLSX, JPG — max 50 MB</p>
+            <p className="text-xs text-slate-400">PDF, JPG — max 50 MB</p>
           </div>
         )}
 
         {errors.file && <p className="text-xs text-red-500 mt-1 font-medium">⚠ {errors.file}</p>}
 
-        {/* Upload notice */}
-       
-
         {uploading && (
           <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
             <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-            <p className="text-sm text-blue-700 font-medium">Uploading &amp; setting visibility…</p>
+            <p className="text-sm text-blue-700 font-medium">Uploading to Google Drive…</p>
           </div>
         )}
 

@@ -302,3 +302,53 @@ export function useDriveUpload() {
     },
   }
 }
+
+
+
+export interface UseDriveDeleteReturn {
+  deleteFromDrive: (params: {
+    gdriveFileId:  string
+    poolAccountId: string
+    recordId:      string
+  }) => Promise<boolean>
+  deleting: boolean
+  error: string | null
+}
+ 
+export function useDriveDelete(): UseDriveDeleteReturn {
+  const [deleting, setDeleting] = useState(false)
+  const [error,    setError]    = useState<string | null>(null)
+ 
+  const deleteFromDrive = useCallback(async (params: {
+    gdriveFileId:  string
+    poolAccountId: string
+    recordId:      string
+  }): Promise<boolean> => {
+    setDeleting(true)
+    setError(null)
+ 
+    try {
+      const response = await fetch('/api/gdrive/delete', {
+        method:  'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(params),
+      })
+ 
+      const json = await response.json()
+ 
+      if (!response.ok || !json.data?.success) {
+        setError(json.error ?? `Delete failed (HTTP ${response.status})`)
+        return false
+      }
+ 
+      return true
+    } catch (err: any) {
+      setError(err?.message ?? 'Unexpected error during delete.')
+      return false
+    } finally {
+      setDeleting(false)
+    }
+  }, [])
+ 
+  return { deleteFromDrive, deleting, error }
+}

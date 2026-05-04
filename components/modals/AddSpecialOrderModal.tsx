@@ -1,12 +1,13 @@
 'use client'
-// components/modals/AddSpecialOrderModal.tsx
+// components/modals/AddSpecialOrderModal.tsx (v2 — Drive Pool upload)
 
 import { useRef, useState } from 'react'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
-import { supabase } from '@/lib/supabase'
 import { AddSpecialOrderSchema, zodErrors } from '@/lib/validations'
+import { useDriveUpload } from '@/hooks/useGDriveTool'
+import { useAuth } from '@/lib/auth'
 import type { SpecialOrder } from '@/types'
 import { FileText, Image as ImageIcon, Paperclip } from 'lucide-react'
 
@@ -20,14 +21,17 @@ interface Props {
 
 export function AddSpecialOrderModal({ open, onClose, onAdd }: Props) {
   const { toast } = useToast()
+  const { user }  = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const today = new Date().toISOString().split('T')[0]
 
-  const [form, setForm]       = useState({ reference: '', subject: '', date: today, status: 'ACTIVE' })
-  const [errors, setErrors]   = useState<Record<string, string>>({})
-  const [file, setFile]       = useState<File | null>(null)
+  // ── Drive Pool hook ──────────────────────────────────────────────────────
+  const { uploadToDrive, uploading, error: uploadError } = useDriveUpload()
+
+  const [form, setForm]         = useState({ reference: '', subject: '', date: today, status: 'ACTIVE' })
+  const [errors, setErrors]     = useState<Record<string, string>>({})
+  const [file, setFile]         = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
-  const [uploading, setUploading] = useState(false)
 
   const field = (key: string, value: string) => {
     setForm(p => ({ ...p, [key]: value }))
@@ -51,7 +55,6 @@ export function AddSpecialOrderModal({ open, onClose, onAdd }: Props) {
   }
 
   async function submit() {
-    // ── Zod validation ──────────────────────────────
     const result = AddSpecialOrderSchema.safeParse(form)
     if (!result.success) {
       setErrors(zodErrors(result.error))
@@ -64,27 +67,24 @@ export function AddSpecialOrderModal({ open, onClose, onAdd }: Props) {
     }
 
     setErrors({})
-    setUploading(true)
 
     try {
-      let fileUrl: string | undefined
+      const soId = `so-${Date.now()}`
 
-      const fileName = `special-orders/${Date.now()}-${file.name.replace(/\s+/g, '_')}`
-      const { data: storageData, error: storageError } = await supabase.storage
-        .from('documents')
-        .upload(fileName, file, { cacheControl: '3600', upsert: false })
+      // ── Drive Pool upload (replaces supabase.storage) ─────────────────
+      const fileUrl = await uploadToDrive(file, 'special_orders', {
+        uploadedBy: user?.role ?? 'unknown',
+        entityId:   soId,
+        entityType: 'special_order',
+      })
 
-      if (storageError) {
-        toast.error('File upload failed. Please try again.')
-        setUploading(false)
+      if (!fileUrl) {
+        toast.error(uploadError ?? 'File upload failed. Please try again.')
         return
       }
 
-      const { data: urlData } = supabase.storage.from('documents').getPublicUrl(storageData.path)
-      fileUrl = urlData.publicUrl
-
       const newSO: SOWithUrl = {
-        id:          `so-${Date.now()}`,
+        id:          soId,
         reference:   result.data.reference,
         subject:     result.data.subject,
         date:        result.data.date,
@@ -99,8 +99,6 @@ export function AddSpecialOrderModal({ open, onClose, onAdd }: Props) {
     } catch (err) {
       console.error(err)
       toast.error('Something went wrong. Please try again.')
-    } finally {
-      setUploading(false)
     }
   }
 
@@ -146,7 +144,6 @@ export function AddSpecialOrderModal({ open, onClose, onAdd }: Props) {
           {errors.subject && <p className="text-xs text-red-500 mt-1 font-medium">⚠ {errors.subject}</p>}
         </div>
 
-
         <input ref={fileInputRef} type="file"
           accept=".pdf,.jpg,.jpeg,.png"
           className="hidden"
@@ -189,9 +186,7 @@ export function AddSpecialOrderModal({ open, onClose, onAdd }: Props) {
         {uploading && (
           <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
             <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-            <p className="text-sm text-blue-700 font-medium">
-              {file ? 'Uploading to cloud storage…' : 'Saving special order…'}
-            </p>
+            <p className="text-sm text-blue-700 font-medium">Uploading to Google Drive…</p>
           </div>
         )}
 

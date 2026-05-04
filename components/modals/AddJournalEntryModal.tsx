@@ -1,5 +1,5 @@
 'use client'
-// components/modals/AddJournalEntryModal.tsx
+// components/modals/AddJournalEntryModal.tsx (v2 — Drive Pool upload)
 
 import { useEffect, useRef, useState } from 'react'
 import { Modal }    from '@/components/ui/Modal'
@@ -7,6 +7,8 @@ import { Button }   from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { Paperclip } from 'lucide-react'
 import { AddJournalEntrySchema, zodErrors, type AddJournalEntryInput } from '@/lib/validations'
+import { useDriveUpload } from '@/hooks/useGDriveTool'
+import { useAuth } from '@/lib/auth'
 
 type JournalEntryFormInput = AddJournalEntryInput & { file?: File }
 type JournalFormState = {
@@ -36,7 +38,7 @@ interface Props {
   title?: string
   submitLabel?: string
   initialValue?: Partial<AddJournalEntryInput> & { content?: string; fileUrl?: string }
-  onSubmit?: (entry: JournalEntryFormInput) => void | Promise<void>
+  onSubmit?: (entry: JournalEntryFormInput & { driveFileUrl?: string }) => void | Promise<void>
 }
 
 const getTodayDate = () => new Date().toISOString().split('T')[0]
@@ -51,10 +53,15 @@ export function AddJournalEntryModal({
   onSubmit,
 }: Props) {
   const { toast } = useToast()
+  const { user }  = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const [form, setForm] = useState<JournalFormState>(EMPTY_FORM)
-  const [file, setFile] = useState<File | null>(null)
+
+  // ── Drive Pool hook ──────────────────────────────────────────────────────
+  const { uploadToDrive, uploading, error: uploadError } = useDriveUpload()
+
+  const [errors, setErrors]         = useState<Record<string, string>>({})
+  const [form, setForm]             = useState<JournalFormState>(EMPTY_FORM)
+  const [file, setFile]             = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState('')
   const [previewOpen, setPreviewOpen] = useState(false)
   const hasExistingFile = !!initialValue?.fileUrl
@@ -65,13 +72,9 @@ export function AddJournalEntryModal({
       setPreviewOpen(false)
       return
     }
-
     const objectUrl = URL.createObjectURL(file)
     setPreviewUrl(objectUrl)
-
-    return () => {
-      URL.revokeObjectURL(objectUrl)
-    }
+    return () => { URL.revokeObjectURL(objectUrl) }
   }, [file])
 
   useEffect(() => {
@@ -98,10 +101,6 @@ export function AddJournalEntryModal({
     setErrors(prev => ({ ...prev, file: '' }))
   }
 
-  function openPreview() {
-    if (file) setPreviewOpen(true)
-  }
-
   function resetAndClose() {
     setErrors({})
     setForm(EMPTY_FORM)
@@ -122,8 +121,30 @@ export function AddJournalEntryModal({
       return
     }
     setErrors({})
+
     try {
-      await onSubmit?.({ ...result.data, file: file ?? undefined })
+      let driveFileUrl: string | undefined
+
+      // Only upload if a new file was selected
+      if (file) {
+        const journalId = `jnl-${Date.now()}`
+
+        // ── Drive Pool upload (replaces supabase.storage) ───────────────
+        const fileUrl = await uploadToDrive(file, 'daily_journals', {
+          uploadedBy: user?.role ?? 'unknown',
+          entityId:   journalId,
+          entityType: 'daily_journal',
+        })
+
+        if (!fileUrl) {
+          toast.error(uploadError ?? 'File upload failed. Please try again.')
+          return
+        }
+
+        driveFileUrl = fileUrl
+      }
+
+      await onSubmit?.({ ...result.data, file: file ?? undefined, driveFileUrl })
       toast.success(`Journal entry "${result.data.title}" saved.`)
       resetAndClose()
     } catch (error) {
@@ -148,14 +169,14 @@ export function AddJournalEntryModal({
             Title <span className="text-red-500">*</span>
           </label>
           <input className={cls('title')} placeholder="e.g. Daily Operations Update – 16 Mar"
-            value={form.title} onChange={e => field('title', e.target.value)} />
+            value={form.title} onChange={e => field('title', e.target.value)} disabled={uploading} />
           {errors.title && <p className="text-xs text-red-500 mt-1 font-medium">⚠ {errors.title}</p>}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-[11px] font-semibold uppercase tracking-widest text-slate-500 mb-1.5">Type</label>
-            <select className={cls('type')} value={form.type} onChange={e => field('type', e.target.value)}>
+            <select className={cls('type')} value={form.type} onChange={e => field('type', e.target.value)} disabled={uploading}>
               <option>MEMO</option><option>REPORT</option><option>LOG</option>
             </select>
           </div>
@@ -163,7 +184,7 @@ export function AddJournalEntryModal({
             <label className="block text-[11px] font-semibold uppercase tracking-widest text-slate-500 mb-1.5">
               Date <span className="text-red-500">*</span>
             </label>
-            <input type="date" className={cls('date')} value={form.date} onChange={e => field('date', e.target.value)} />
+            <input type="date" className={cls('date')} value={form.date} onChange={e => field('date', e.target.value)} disabled={uploading} />
             {errors.date && <p className="text-xs text-red-500 mt-1 font-medium">⚠ {errors.date}</p>}
           </div>
         </div>
@@ -173,7 +194,7 @@ export function AddJournalEntryModal({
             Author <span className="text-red-500">*</span>
           </label>
           <input className={cls('author')} placeholder="e.g. P/Col. Dela Cruz"
-            value={form.author} onChange={e => field('author', e.target.value)} />
+            value={form.author} onChange={e => field('author', e.target.value)} disabled={uploading} />
           {errors.author && <p className="text-xs text-red-500 mt-1 font-medium">⚠ {errors.author}</p>}
         </div>
 
@@ -201,18 +222,17 @@ export function AddJournalEntryModal({
               <div className="ml-3 flex items-center gap-2 flex-shrink-0">
                 <button
                   type="button"
-                  onClick={openPreview}
+                  onClick={() => setPreviewOpen(true)}
                   className="text-xs font-semibold text-blue-700 hover:text-blue-800 px-2.5 py-1.5 rounded-lg border border-blue-200 bg-white transition"
+                  disabled={uploading}
                 >
                   View
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setFile(null)
-                    if (fileInputRef.current) fileInputRef.current.value = ''
-                  }}
+                  onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
                   className="text-slate-400 hover:text-red-500 font-bold text-sm"
+                  disabled={uploading}
                 >
                   ✕
                 </button>
@@ -237,10 +257,10 @@ export function AddJournalEntryModal({
             </div>
           ) : (
             <div
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => !uploading && fileInputRef.current?.click()}
               className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition ${
                 errors.file ? 'border-red-400 bg-red-50' : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50'
-              }`}
+              } ${uploading ? 'pointer-events-none opacity-50' : ''}`}
             >
               <div className="mb-1.5 flex justify-center text-blue-600">
                 <Paperclip size={28} strokeWidth={2.1} />
@@ -256,16 +276,25 @@ export function AddJournalEntryModal({
           <label className="block text-[11px] font-semibold uppercase tracking-widest text-slate-500 mb-1.5">Content</label>
           <textarea rows={4} className={`${cls('content')} resize-none`}
             placeholder="Enter the full content of this journal entry…"
-            value={form.content} onChange={e => field('content', e.target.value)} />
+            value={form.content} onChange={e => field('content', e.target.value)}
+            disabled={uploading} />
           {errors.content && <p className="text-xs text-red-500 mt-1 font-medium">⚠ {errors.content}</p>}
         </div>
 
+        {uploading && (
+          <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
+            <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+            <p className="text-sm text-blue-700 font-medium">Uploading to Google Drive…</p>
+          </div>
+        )}
+
         <div className="flex justify-end gap-2.5 pt-1">
-          <Button variant="outline" onClick={resetAndClose}>Cancel</Button>
-          <Button variant="primary" onClick={submit} disabled={hasMissingRequired}>{submitLabel}</Button>
+          <Button variant="outline" onClick={resetAndClose} disabled={uploading}>Cancel</Button>
+          <Button variant="primary" onClick={submit} disabled={hasMissingRequired || uploading}>{submitLabel}</Button>
         </div>
       </div>
 
+      {/* File preview sub-modal */}
       <Modal open={previewOpen} onClose={() => setPreviewOpen(false)} title={file ? `Preview: ${file.name}` : 'Attachment Preview'} width="max-w-5xl">
         <div className="p-6 space-y-4">
           {file ? (
@@ -282,35 +311,16 @@ export function AddJournalEntryModal({
                 </div>
               ) : getFilePreviewKind(file.name, file.type) === 'pdf' ? (
                 <iframe src={previewUrl} title={file.name} className="h-[75vh] w-full rounded-xl border border-slate-200 bg-white" />
-              ) : getFilePreviewKind(file.name, file.type) === 'text' ? (
-                <iframe src={previewUrl} title={file.name} className="h-[75vh] w-full rounded-xl border border-slate-200 bg-white" />
-              ) : getFilePreviewKind(file.name, file.type) === 'audio' ? (
-                <div className="rounded-xl border border-slate-200 bg-white p-4">
-                  <audio controls className="w-full" src={previewUrl}>
-                    Your browser does not support the audio element.
-                  </audio>
-                </div>
-              ) : getFilePreviewKind(file.name, file.type) === 'video' ? (
-                <div className="rounded-xl border border-slate-200 bg-white p-4">
-                  <video controls className="w-full max-h-[75vh] rounded-lg" src={previewUrl}>
-                    Your browser does not support the video element.
-                  </video>
-                </div>
               ) : (
                 <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
                   <p className="font-medium text-slate-800 mb-2">Preview not available for this file type before upload.</p>
-                  <a href={previewUrl} download={file.name} className="text-blue-700 font-semibold hover:underline">
-                    Download file
-                  </a>
+                  <a href={previewUrl} download={file.name} className="text-blue-700 font-semibold hover:underline">Download file</a>
                 </div>
               )}
             </>
           ) : (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-              No attachment selected.
-            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">No attachment selected.</div>
           )}
-
           <div className="flex justify-end">
             <Button variant="outline" onClick={() => setPreviewOpen(false)}>Close</Button>
           </div>

@@ -1,12 +1,13 @@
 'use client'
-// components/modals/AddConfidentialDocModal.tsx
+// components/modals/AddConfidentialDocModal.tsx (v2 — Drive Pool upload)
 
 import { useState, useRef } from 'react'
 import { Modal }    from '@/components/ui/Modal'
 import { Button }   from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
-import { supabase } from '@/lib/supabase'
 import { AddConfidentialDocSchema, zodErrors } from '@/lib/validations'
+import { useDriveUpload } from '@/hooks/useGDriveTool'
+import { useAuth } from '@/lib/auth'
 import type { ConfidentialDoc } from '@/types'
 
 interface Props {
@@ -25,11 +26,15 @@ async function hashPassword(password: string): Promise<string> {
 
 export function AddConfidentialDocModal({ open, onClose, onAdd }: Props) {
   const { toast }    = useToast()
+  const { user }     = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const today = new Date().toISOString().split('T')[0]
+
+  // ── Drive Pool hook ──────────────────────────────────────────────────────
+  const { uploadToDrive, uploading, error: uploadError } = useDriveUpload()
+
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [dragging, setDragging]         = useState(false)
-  const [uploading, setUploading]       = useState(false)
   const [show, setShow]                 = useState(false)
   const [errors, setErrors]             = useState<Record<string, string>>({})
 
@@ -59,7 +64,6 @@ export function AddConfidentialDocModal({ open, onClose, onAdd }: Props) {
   }
 
   async function submit() {
-    // ── Zod validation ──────────────────────────────
     const result = AddConfidentialDocSchema.safeParse(form)
     if (!result.success) {
       setErrors(zodErrors(result.error))
@@ -72,28 +76,25 @@ export function AddConfidentialDocModal({ open, onClose, onAdd }: Props) {
     }
 
     setErrors({})
-    setUploading(true)
 
     try {
       const passwordHash = await hashPassword(result.data.password)
-      let fileUrl: string | undefined
+      const docId = `cd-${Date.now()}`
 
-      const fileName = `confidential-${Date.now()}-${selectedFile.name.replace(/\s+/g, '_')}`
-      const { data: storageData, error: storageError } = await supabase.storage
-        .from('documents')
-        .upload(fileName, selectedFile, { cacheControl: '3600', upsert: false })
+      // ── Drive Pool upload (replaces supabase.storage) ─────────────────
+      const fileUrl = await uploadToDrive(selectedFile, 'classified_documents', {
+        uploadedBy: user?.role ?? 'unknown',
+        entityId:   docId,
+        entityType: 'classified_document',
+      })
 
-      if (storageError) {
-        toast.error('File upload failed. Please try again.')
-        setUploading(false)
+      if (!fileUrl) {
+        toast.error(uploadError ?? 'File upload failed. Please try again.')
         return
       }
 
-      const { data: urlData } = supabase.storage.from('documents').getPublicUrl(storageData.path)
-      fileUrl = urlData.publicUrl
-
       const newDoc: ConfidentialDoc & { fileUrl?: string; passwordHash: string } = {
-        id:             `cd-${Date.now()}`,
+        id:             docId,
         title:          result.data.title,
         classification: result.data.classification as 'RESTRICTED' | 'CONFIDENTIAL',
         date:           result.data.date,
@@ -108,8 +109,6 @@ export function AddConfidentialDocModal({ open, onClose, onAdd }: Props) {
     } catch (err) {
       console.error(err)
       toast.error('Something went wrong. Please try again.')
-    } finally {
-      setUploading(false)
     }
   }
 
@@ -226,7 +225,7 @@ export function AddConfidentialDocModal({ open, onClose, onAdd }: Props) {
             }`}>
             <div className="text-2xl mb-1.5">🔒</div>
             <p className="text-sm font-medium text-slate-600 mb-0.5">Attach confidential document</p>
-            <p className="text-xs text-slate-400">File will be stored securely</p>
+            <p className="text-xs text-slate-400">File will be stored securely in Google Drive</p>
           </div>
         )}
 
@@ -235,7 +234,7 @@ export function AddConfidentialDocModal({ open, onClose, onAdd }: Props) {
         {uploading && (
           <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
             <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-            <p className="text-sm text-blue-700 font-medium">Uploading securely…</p>
+            <p className="text-sm text-blue-700 font-medium">Uploading securely to Google Drive…</p>
           </div>
         )}
 
