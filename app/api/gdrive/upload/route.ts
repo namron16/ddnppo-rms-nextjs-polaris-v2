@@ -1,7 +1,7 @@
 // app/api/gdrive/upload/route.ts
 import { NextResponse } from 'next/server'
-import { uploadFile } from '@/lib/gdrive-pool/gateway'
-import type { DocumentCategory, UploadRequest } from '@/lib/gdrive-pool/types'
+import { uploadViaPool } from '@/lib/gdrive-pool/migrate-modal'
+import type { DocumentCategory } from '@/lib/gdrive-pool/types'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60   // seconds (file uploads can be slow)
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
 
     const buffer = Buffer.from(await file.arrayBuffer())
 
-    const req: UploadRequest = {
+    const result = await uploadViaPool({
       file:          buffer,
       fileName:      file.name,
       mimeType:      file.type,
@@ -47,17 +47,11 @@ export async function POST(request: Request) {
       uploadedBy,
       fileSizeBytes: file.size,
       preferredPoolId: preferredPoolId ?? undefined,
-    }
-
-    const result = await uploadFile(req)
-
-    if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 500 })
-    }
+    })
 
     return NextResponse.json({ data: result }, { status: 201 })
   } catch (err: any) {
     console.error('[Upload API]', err.message)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: err.message ?? 'Internal server error' }, { status: 500 })
   }
 }
