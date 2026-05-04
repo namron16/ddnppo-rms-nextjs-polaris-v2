@@ -21,6 +21,7 @@ import {
   CATEGORY_LABELS,
 } from '@/lib/data201'
 import { useAuth } from '@/lib/auth'
+import { logUpdatePersonnel } from '@/lib/adminLogger'
 import { supabase } from '@/lib/supabase'
 import { status201BadgeClass, status201Icon, formatDate } from '@/lib/utils'
 import type { Personnel201, Doc201Item, Doc201Status, Doc201Category } from '@/types'
@@ -1497,6 +1498,7 @@ export default function PersonnelFilesPage() {
     }
 
     setPersonnel(prev => prev.map(p => p.id !== personId ? p : { ...p, ...updates }))
+    logUpdatePersonnel(updates.name ?? 'personnel record', user?.role)
 
     if (viewDisc.payload?.id === personId) {
       viewDisc.open({ ...viewDisc.payload, ...updates })

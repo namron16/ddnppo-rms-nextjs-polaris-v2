@@ -1,4 +1,4 @@
-// lib/adminLogger.ts
+﻿// lib/adminLogger.ts
 // Centralized audit logging for all hardcoded admin accounts
 
 import { supabase } from './supabase'
@@ -67,15 +67,14 @@ export async function logAction(
   const adminId = adminIdOverride ?? _currentAdminId
   if (!adminId) return
 
-  try {
-    await supabase.from('admin_logs').insert({
-      admin_id: adminId,
-      action,
-      description,
-    })
-  } catch (err) {
-    // never block the UI
-    console.warn('[adminLogger] Failed to write log:', err)
+  const { error } = await supabase.from('admin_logs').insert({
+    admin_id: adminId,
+    action,
+    description,
+  })
+
+  if (error) {
+    console.warn('[adminLogger] Failed to write log:', error.message)
   }
 }
 
@@ -96,13 +95,13 @@ export const logViewDocument = (docTitle: string, adminIdOverride?: AdminRole) =
 export const logDownloadDocument = (docTitle: string) =>
   logAction('download_document', `Downloaded document "${docTitle}"`)
 
-export const logUploadDocument = (docTitle: string) =>
-  logAction('upload_document', `Uploaded document "${docTitle}"`)
+export const logUploadDocument = (docTitle: string, adminIdOverride?: AdminRole) =>
+  logAction('upload_document', `Uploaded document "${docTitle}"`, adminIdOverride)
 
-export const logEditDocument = (docTitle: string) =>
-  logAction('edit_document', `Edited document "${docTitle}"`)
+export const logEditDocument = (docTitle: string, adminIdOverride?: AdminRole) =>
+  logAction('edit_document', `Edited document "${docTitle}"`, adminIdOverride)
 
-export const logArchiveDocument = (docTitle: string, type = 'document') =>
+export const logArchiveDocument = (docTitle: string, type = 'document', adminIdOverride?: AdminRole) =>
   logAction('archive_document', `Archived ${type} "${docTitle}"`)
 
 export const logRestoreDocument = (docTitle: string) =>
@@ -150,3 +149,21 @@ export const logApproveDocument = (docTitle: string) =>
 
 export const logRejectDocument = (docTitle: string, reason: string) =>
   logAction('reject_document', `Rejected document "${docTitle}" — ${reason}`)
+
+export const logEditJournal = (entryTitle: string, adminIdOverride?: AdminRole) =>
+  logAction('edit_journal', `Edited journal entry "${entryTitle}"`, adminIdOverride)
+
+export const logEditOrgMember = (memberName: string, adminIdOverride?: AdminRole) =>
+  logAction('edit_org_member', `Edited organization member "${memberName}"`, adminIdOverride)
+
+export const logAddOrgMember = (memberName: string, adminIdOverride?: AdminRole) =>
+  logAction('add_org_member', `Added organization member "${memberName}"`, adminIdOverride)
+
+export const logUpdatePersonnel = (personName: string, adminIdOverride?: AdminRole) =>
+  logAction('update_personnel', `Updated 201 profile for "${personName}"`, adminIdOverride)
+
+export const logEditLibraryItem = (itemTitle: string, adminIdOverride?: AdminRole) =>
+  logAction('edit_document', `Edited library item "${itemTitle}"`, adminIdOverride)
+
+export const logRenameAttachment = (oldName: string, newName: string, adminIdOverride?: AdminRole) =>
+  logAction('edit_document', `Renamed attachment "${oldName}" to "${newName}"`, adminIdOverride)

@@ -31,7 +31,7 @@ import {
   createApproval, reviewByDPDAorDPDO, finalApproveByPD,
   type DocumentApproval, type DocType,
 } from '@/lib/rbac'
-import { logDeleteDocument, logViewDocument } from '@/lib/adminLogger'
+import { logDeleteDocument, logEditDocument, logRenameAttachment, logViewDocument } from '@/lib/adminLogger'
 import {
   hasFullDocumentAccess, ROLE_META,
 } from '@/lib/permissions'
@@ -586,6 +586,7 @@ export default function MasterPage() {
 
   async function handleSave(updated: DocWithUrl) {
     await updateMasterDocument(updated)
+    await logEditDocument(updated.title)
     setDocuments(prev => prev.map(d => d.id === updated.id
       ? { ...d, ...updated }
       : d
@@ -699,6 +700,7 @@ export default function MasterPage() {
       next.set(mapKey, list.map(a => a.id === att.id ? { ...a, file_name: trimmed } : a))
       return next
     })
+    await logRenameAttachment(att.file_name, trimmed, user?.role)
     toast.success('Attachment renamed.')
     return true
   }

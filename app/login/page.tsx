@@ -5,6 +5,7 @@ import { useState } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useAuth, ADMIN_ACCOUNTS } from '@/lib/auth'
+import { getDefaultAdminRoute, type SessionRole } from '@/lib/adminRouteAccess'
 
 const ROLE_OPTIONS = ADMIN_ACCOUNTS.map(a => ({
   id: a.id,
@@ -35,7 +36,7 @@ export default function LoginPage() {
       return
     }
 
-    router.push('/admin/master')
+    router.push(getDefaultAdminRoute(roleId as SessionRole))
   }
 
   // Common input styling matching the design
