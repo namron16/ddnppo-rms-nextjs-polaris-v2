@@ -116,6 +116,53 @@ function fileInfo(name: string) {
   return { icon: '📄', label: 'FILE', badgeCls: 'bg-slate-100 text-slate-600' }
 }
 
+function Breadcrumb({
+  navStack,
+  onNavigateTo,
+}: {
+  navStack: AttachmentNavEntry[]
+  onNavigateTo: (index: number) => void
+}) {
+  if (navStack.length <= 1) return null
+
+  return (
+    <div className="flex items-center gap-0 flex-wrap mb-4 px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl">
+      <span className="text-slate-400 mr-1 text-sm">🗂</span>
+      {navStack.map((entry, i) => {
+        const label = entry.kind === 'document' ? entry.doc.title : entry.att.file_name
+        const isLast = i === navStack.length - 1
+        const fi = entry.kind === 'attachment' ? fileInfo(entry.att.file_name) : null
+
+        return (
+          <span key={i} className="flex items-center">
+            {i > 0 && (
+              <span className="mx-1.5 text-slate-400 font-bold text-sm select-none">›</span>
+            )}
+            {isLast ? (
+              <span
+                className="flex items-center gap-1 text-[13px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg"
+                title={label}
+              >
+                {fi && <Paperclip size={14} className="flex-shrink-0 text-blue-600" />}
+                <span className="truncate max-w-[180px]">{label.length > 28 ? label.slice(0, 27) + '…' : label}</span>
+              </span>
+            ) : (
+              <button
+                onClick={() => onNavigateTo(i)}
+                className="flex items-center gap-1 text-[13px] font-semibold text-slate-600 hover:text-blue-700 hover:bg-white border border-transparent hover:border-blue-200 px-2 py-1 rounded-lg transition-all"
+                title={`Go back to ${label}`}
+              >
+                {fi && <Paperclip size={14} className="flex-shrink-0 text-blue-600" />}
+                <span className="truncate max-w-[140px]">{label.length > 20 ? label.slice(0, 19) + '…' : label}</span>
+              </button>
+            )}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
 function getExtensionFromUrl(fileUrl: string) {
   const cleanUrl = fileUrl.split('?')[0].split('#')[0]
   const match = cleanUrl.match(/\.([a-z0-9]+)$/i)
@@ -331,14 +378,14 @@ function InlineFileViewerModal({ fileUrl, fileName, open, onClose, onDownload, o
             <div className="flex flex-col items-center justify-center py-20 px-8 text-center">
               <span className="text-6xl mb-4">{fi.icon}</span>
               <p className="text-sm font-semibold text-slate-700 mb-1 break-all">{fileName}</p>
-              <p className="text-xs text-slate-400 mb-5 max-w-xs">Preview not available. Download to view.</p>
+              <p className="text-xs text-slate-400 mb-5 max-w-xs">Preview not available. Download to view the file.</p>
               <button
                 type="button"
                 onClick={handleDownload}
                 disabled={isDownloading}
                 className="inline-flex items-center gap-2 bg-blue-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-blue-700 transition disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {isDownloading ? '⬇ Saving…' : '⬇ Download'}
+                {isDownloading ? '⬇ Saving…' : '⬇ Download to view'}
               </button>
             </div>
           )}
@@ -913,6 +960,8 @@ export default function MasterPage() {
                     </button>
                   )}
 
+                  <Breadcrumb navStack={attachmentNavStack} onNavigateTo={handleNavigateTo} />
+
                   {/* Document header */}
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -1260,10 +1309,10 @@ export default function MasterPage() {
                                             <button
                                               type="button"
                                               onClick={() => handlePrintFile(att.file_url, att.file_name, att.document_id)}
-                                              className="inline-flex items-center justify-center text-[10px] font-semibold px-2 py-1 bg-slate-100 text-slate-600 rounded hover:bg-slate-200 transition"
+                                              className="text-[10px] font-semibold px-2 py-1 bg-slate-100 text-slate-600 rounded hover:bg-slate-200 transition"
                                               title="Print"
                                             >
-                                              <Printer size={12} />
+                                              🖨️
                                             </button>
                                             <button
                                               onClick={() => handleDrillDown(att)}
@@ -1290,8 +1339,6 @@ export default function MasterPage() {
                                             )}
                                           </>
                                         ) : (
-                                          // FIX 3: Removed broken JS object literal `{canModifyDocuments ? ... : ...}`
-                                          // and stray `className` attribute; replaced with clean conditional JSX
                                           canModifyDocuments ? (
                                             <button
                                               onClick={() => handleRestoreAttachment(att)}
