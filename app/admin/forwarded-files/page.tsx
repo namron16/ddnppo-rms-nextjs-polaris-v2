@@ -112,7 +112,7 @@ export default function InboxPage() {
       setItems(prev => prev.map(i =>
         i.id === item.id ? { ...i, status: 'saved', saved_to: targetPage, saved_at: new Date().toISOString() } : i
       ))
-      await logAction('save_inbox_item', `Saved inbox item "${item.document_title}" to ${targetPage}`, user.role)
+      await logAction('save_inbox_item', `Saved inbox item "${item.document_title}" to ${targetPage}`)
     }
 
     setSavingItem(null)
@@ -128,7 +128,7 @@ export default function InboxPage() {
 
     if (!error) {
       setItems(prev => prev.filter(item => item.id !== itemId))
-      await logAction('recall_inbox_item', `Recalled inbox item`, user?.role)
+      await logAction('recall_inbox_item', `Recalled inbox item`)
     }
   }
 

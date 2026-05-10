@@ -998,11 +998,11 @@ export default function OrganizationPage() {
     if (editTarget) {
       setMembers(prev => prev.map(m => m.id === editTarget.id ? { ...m, ...data } : m))
       toast.success('Member updated.')
-      logEditOrgMember(data.name, user?.role)
+      logEditOrgMember(data.name)
     } else {
       setMembers(prev => [...prev, { ...data, id: `org-${Date.now()}` }])
       toast.success(`${data.name} added to the org chart.`)
-      logAddOrgMember(data.name, user?.role)
+      logAddOrgMember(data.name)
     }
     setSelected(null)
   }

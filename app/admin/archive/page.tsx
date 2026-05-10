@@ -66,7 +66,7 @@ export default function ArchivePage() {
     const item = deleteDisc.payload
     if (!item) return
     await deleteArchivedDoc(item.id)
-    await logDeleteDocument(item.title, `archived ${item.type.toLowerCase()}`, user?.role as AdminRole)
+    await logDeleteDocument(item.title, `archived ${item.type.toLowerCase()}`)
     setItems(prev => prev.filter(i => i.id !== item.id))
     toast.success(`"${item.title}" permanently deleted.`)
     deleteDisc.close()

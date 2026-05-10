@@ -395,7 +395,7 @@ export default function DailyJournalsPage() {
       }
 
       await deleteDailyJournal(item.id)
-      await logDeleteDocument(item.title, 'daily journal', user?.role as AdminRole)
+      await logDeleteDocument(item.title, 'daily journal')
       setEntries(prev => prev.filter(entry => entry.id !== item.id))
       if (viewDisc.payload?.id === item.id) viewDisc.close()
       if (editDisc.payload?.id === item.id) editDisc.close()
