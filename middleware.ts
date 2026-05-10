@@ -1,85 +1,71 @@
-// middleware.ts — Admin-only route protection
-// No officer/user role. All routes require authenticated admin.
+// middleware.ts — JWT-validated route protection via Supabase SSR
 
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { updateSession } from './lib/supabase/middleware'
 import { getDefaultAdminRoute, isAllowedAdminPath } from './lib/adminRouteAccess'
 import type { SessionRole } from './lib/adminRouteAccess'
 
-const PROTECTED = ['/admin']
-const PUBLIC    = ['/login']
-const VALID_SESSION_ROLES = new Set([
-  'admin', 'DPDA', 'DPDO', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10',
-])
-
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
-  const sessionRole  = request.cookies.get('rms_session')?.value
-  const hasSession   = Boolean(sessionRole)
-  const isLoggedIn   = Boolean(sessionRole && VALID_SESSION_ROLES.has(sessionRole))
 
-  const redirectToLogin = () => {
-    const loginUrl = new URL('/login', request.url)
-    loginUrl.searchParams.set('from', pathname)
-    const response = NextResponse.redirect(loginUrl)
+  // updateSession refreshes the JWT and returns the validated user (or null)
+  const { supabaseResponse, user } = await updateSession(request)
 
-    // Clear stale cookies to prevent /login <-> /admin redirect loops.
-    if (hasSession && !isLoggedIn) {
-      response.cookies.delete('rms_session')
-      response.cookies.delete('rms_role')
-    }
+  const isLoggedIn = !!user
+  const role = user?.user_metadata?.role as SessionRole | undefined
 
-    return response
+  // ── Helper ───────────────────────────────
+
+  function redirectTo(path: string) {
+    const url = new URL(path, request.url)
+    return NextResponse.redirect(url)
   }
 
-  // Redirect authenticated users away from login
-  if (PUBLIC.some(p => pathname.startsWith(p))) {
-    if (isLoggedIn) {
-      return NextResponse.redirect(new URL(getDefaultAdminRoute(sessionRole as SessionRole), request.url))
-    }
-    // Allow unauthenticated access to /login
-    // Also clear any stale session cookies if present
-    if (hasSession && !isLoggedIn) {
-      const response = NextResponse.next()
-      response.cookies.delete('rms_session')
-      response.cookies.delete('rms_role')
-      return response
-    }
-    return NextResponse.next()
-  }
+  // ── Root redirect ─────────────────────────
 
-  // Redirect unauthenticated users to login
-  if (PROTECTED.some(p => pathname.startsWith(p)) && !isLoggedIn) {
-    return redirectToLogin()
-  }
-
-  // Redirect authenticated users away from unauthorized admin paths.
-  if (PROTECTED.some(p => pathname.startsWith(p)) && isLoggedIn) {
-    const role = sessionRole as SessionRole
-    if (pathname === '/admin') {
-      return NextResponse.redirect(new URL(getDefaultAdminRoute(role), request.url))
-    }
-
-    if (!isAllowedAdminPath(pathname, role)) {
-      return NextResponse.redirect(new URL(getDefaultAdminRoute(role), request.url))
-    }
-  }
-
-  // Redirect root to login or admin
   if (pathname === '/') {
-    if (isLoggedIn) {
-      return NextResponse.redirect(new URL(getDefaultAdminRoute(sessionRole as SessionRole), request.url))
-    }
-    return redirectToLogin()
+    return isLoggedIn && role
+      ? redirectTo(getDefaultAdminRoute(role))
+      : redirectTo('/login')
   }
 
-  return NextResponse.next()
+  // ── /login ────────────────────────────────
+
+  if (pathname.startsWith('/login')) {
+    if (isLoggedIn && role) {
+      return redirectTo(getDefaultAdminRoute(role))
+    }
+    return supabaseResponse   // allow
+  }
+
+  // ── /admin/* ──────────────────────────────
+
+  if (pathname.startsWith('/admin')) {
+    if (!isLoggedIn || !role) {
+      const loginUrl = new URL('/login', request.url)
+      loginUrl.searchParams.set('from', pathname)
+      return NextResponse.redirect(loginUrl)
+    }
+
+    // Redirect /admin → role's default page
+    if (pathname === '/admin') {
+      return redirectTo(getDefaultAdminRoute(role))
+    }
+
+    // Block unauthorized paths
+    if (!isAllowedAdminPath(pathname, role)) {
+      return redirectTo(getDefaultAdminRoute(role))
+    }
+
+    return supabaseResponse   // allow
+  }
+
+  return supabaseResponse
 }
 
 export const config = {
   matcher: [
-    '/admin/:path*',
-    '/login',
-    '/',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
