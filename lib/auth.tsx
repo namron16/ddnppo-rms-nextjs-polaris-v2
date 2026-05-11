@@ -105,10 +105,6 @@ interface AuthContextValue {
   user:      AdminUser | null
   session:   Session | null
   isLoading: boolean
-
-  // Two-step login
-  sendOtp:       (email: string) => Promise<{ error: string | null }>
-  verifyOtp:     (email: string, token: string) => Promise<{ error: string | null }>
   loginPassword: (email: string, password: string) => Promise<{ error: string | null }>
   logout:        () => Promise<void>
 }
@@ -148,7 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const adminUser = await loadProfile(s.user)
         setUser(adminUser)
         setSession(s)
-        if (adminUser) setCurrentLogger(adminUser.role as AdminRole)
+        if (adminUser) setCurrentLogger(adminUser.role as AdminRole, adminUser.id)
       }
       setIsLoading(false)
     })
@@ -160,7 +156,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const adminUser = await loadProfile(s.user)
           setUser(adminUser)
           setSession(s)
-          if (adminUser) setCurrentLogger(adminUser.role as AdminRole)
+          if (adminUser) setCurrentLogger(adminUser.role as AdminRole, adminUser.id)
         } else {
           setUser(null)
           setSession(null)
@@ -174,32 +170,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Step 1: Send OTP ──────────────────────
 
-  const sendOtp = useCallback(async (email: string) => {
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        shouldCreateUser: false,  // reject unknown emails
-      },
-    })
-    return { error: error?.message ?? null }
-  }, [supabase])
 
-  // ── Step 2: Verify OTP ────────────────────
-  // This creates a short-lived session. We do NOT set the user here;
-  // we wait for the password step to establish a full password session.
-
-  const verifyOtp = useCallback(async (email: string, token: string) => {
-    const { error } = await supabase.auth.verifyOtp({
-      email,
-      token,
-      type: 'email',
-    })
-    return { error: error?.message ?? null }
-  }, [supabase])
-
-  // ── Step 3: Password Login ────────────────
+  // Password Login ────────────────
 
   const loginPassword = useCallback(async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -215,7 +188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     setUser(adminUser)
     setSession(data.session)
-    setCurrentLogger(adminUser.role as AdminRole)
+    setCurrentLogger(adminUser.role as AdminRole, adminUser.id)
 
     return { error: null }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -232,8 +205,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, session, isLoading,
-      sendOtp, verifyOtp, loginPassword, logout,
+      user, session, isLoading, loginPassword, logout,
     }}>
       {children}
     </AuthContext.Provider>
