@@ -661,7 +661,7 @@ export default function MasterPage() {
     if (!selection) return
     const doc = selection
     await deleteMasterDocument(doc.id)
-    await logDeleteDocument(doc.title, 'master document', user?.role as AdminRole)
+    await logDeleteDocument(doc.title, 'master document')
     setDocuments(prev => prev.filter(d => d.id !== doc.id))
     setSelection(null)
     toast.success('Document deleted permanently.')
@@ -747,7 +747,7 @@ export default function MasterPage() {
       next.set(mapKey, list.map(a => a.id === att.id ? { ...a, file_name: trimmed } : a))
       return next
     })
-    await logRenameAttachment(att.file_name, trimmed, user?.role)
+    await logRenameAttachment(att.file_name, trimmed)
     toast.success('Attachment renamed.')
     return true
   }
@@ -1027,7 +1027,7 @@ export default function MasterPage() {
                           onClick={() => {
                             setViewerFile({ url: selection.fileUrl!, name: selection.title, sourceDocumentId: selection.id })
                             if (user?.role) {
-                              logViewDocument(selection.title, user.role as AdminRole).catch(() => {})
+                              logViewDocument(selection.title).catch(() => {})
                             }
                           }}
                           className="text-xs px-2.5 py-1 bg-white border border-blue-200 text-blue-700 rounded-md font-medium hover:bg-blue-100 transition"
@@ -1291,7 +1291,7 @@ export default function MasterPage() {
                                               onClick={() => {
                                                 setViewerFile({ url: att.file_url, name: att.file_name, sourceDocumentId: att.document_id })
                                                 if (user?.role) {
-                                                  logViewDocument(att.file_name, user.role as AdminRole).catch(() => {})
+                                                  logViewDocument(att.file_name).catch(() => {})
                                                 }
                                               }}
                                               className="text-[10px] font-semibold px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 transition"

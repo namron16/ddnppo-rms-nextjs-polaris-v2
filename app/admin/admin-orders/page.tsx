@@ -1138,7 +1138,7 @@ export default function AdminOrdersPage() {
     const so = deleteDisc.payload
     if (!so) return
     await deleteSpecialOrder(so.id)
-    await logDeleteDocument(`${so.reference} - ${so.subject}`, 'special order', user?.role as AdminRole)
+    await logDeleteDocument(`${so.reference} - ${so.subject}`, 'special order')
     setOrders(prev => prev.filter(o => o.id !== so.id))
     if (selectedOrder?.id === so.id) {
       setSelectedOrder(null)
@@ -1150,7 +1150,7 @@ export default function AdminOrdersPage() {
 
   async function handleSaveOrder(updatedOrder: SOWithUrl) {
     await updateSpecialOrder(updatedOrder)
-    await logAction('edit_document', `Edited special order "${updatedOrder.reference} - ${updatedOrder.subject}"`, user?.role as AdminRole)
+    await logAction('edit_document', `Edited special order "${updatedOrder.reference} - ${updatedOrder.subject}"`)
     setOrders(prev => prev.map(order => order.id === updatedOrder.id ? updatedOrder : order))
     if (selectedOrder?.id === updatedOrder.id) setSelectedOrder(updatedOrder)
     setNavStack(prev => prev.map(entry => (
@@ -1205,7 +1205,7 @@ export default function AdminOrdersPage() {
     if (trimmed === att.file_name) return true
     const ok = await dbRenameAttachment(att.id, trimmed)
     if (!ok) { toast.error('Failed to rename attachment.'); return false }
-    await logRenameAttachment(att.file_name, trimmed, user?.role)
+    await logRenameAttachment(att.file_name, trimmed)
     const mapKey = att.parent_attachment_id ?? att.special_order_id
     setAttachmentsMap(prev => {
       const next = new Map(prev)

@@ -406,7 +406,7 @@ export default function LibraryPage() {
       return
     }
     await deleteLibraryItem(item.id)
-    await logDeleteDocument(item.title, 'library item', user?.role as AdminRole)
+    await logDeleteDocument(item.title, 'library item')
     setItems(prev => prev.filter(i => i.id !== item.id))
     if (viewDisc.payload?.id === item.id) viewDisc.close()
     if (editDisc.payload?.id === item.id) editDisc.close()

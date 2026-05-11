@@ -1498,7 +1498,7 @@ export default function PersonnelFilesPage() {
     }
 
     setPersonnel(prev => prev.map(p => p.id !== personId ? p : { ...p, ...updates }))
-    logUpdatePersonnel(updates.name ?? 'personnel record', user?.role)
+    logUpdatePersonnel(updates.name ?? 'personnel record')
 
     if (viewDisc.payload?.id === personId) {
       viewDisc.open({ ...viewDisc.payload, ...updates })
