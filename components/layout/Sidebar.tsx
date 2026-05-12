@@ -23,7 +23,7 @@ const DOC_NAV: NavItem[] = [
   { label: 'Daily Journal',         icon: '📒', href: '/admin/daily-journals' },
   { label: 'Organization',          icon: '🏛️', href: '/admin/organization' },
   { label: 'e-Library',             icon: '📚', href: '/admin/e-library' },
-  { label: 'Forwarded Files', icon: '📥', href: '/admin/forwarded-files' },
+  { label: 'Forwarded Files', icon: '📥', href: '/admin/forwarded' },
   { label: 'Archive',         icon: '🗄️', href: '/admin/archive' },
 ]
 const P2_NAV: NavItem[] = [
@@ -32,7 +32,7 @@ const P2_NAV: NavItem[] = [
   { label: 'Classified Documents',  icon: '🛡️', href: '/admin/classified-documents' },
   { label: 'Organization',          icon: '🏛️', href: '/admin/organization' },
   { label: 'e-Library',             icon: '📚', href: '/admin/e-library' },
-  { label: 'Forwarded Files', icon: '📥', href: '/admin/forwarded-files' },
+  { label: 'Forwarded Files', icon: '📥', href: '/admin/forwarded' },
   { label: 'Archive',         icon: '🗄️', href: '/admin/archive' },
 ]
 
@@ -42,7 +42,7 @@ const VIEWER_NAV: NavItem[] = [
   { label: 'Daily Journal',         icon: '📒', href: '/admin/daily-journals' },
   { label: 'Organization',          icon: '🏛️', href: '/admin/organization' },
   { label: 'e-Library',             icon: '📚', href: '/admin/e-library' },
-   { label: 'Forwarded Files', icon: '📥', href: '/admin/forwarded-files' },
+   { label: 'Forwarded Files', icon: '📥', href: '/admin/forwarded' },
    { label: 'Archive',         icon: '🗄️', href: '/admin/archive' },
 ]
 
@@ -119,40 +119,28 @@ export function Sidebar() {
   useEffect(() => { setPendingHref(null) }, [pathname])
 
   // Fetch unread inbox count
+  // Replace the "Fetch unread inbox count" useEffect with this:
   useEffect(() => {
     if (!user) {
       setUnreadInboxCount(0)
       return
     }
 
-    const fetchUnreadCount = async () => {
-      const { count } = await supabase
-        .from('inbox_items')
-        .select('id', { count: 'exact', head: true })
-        .eq('recipient_id', user.role)
-        .eq('status', 'unread')
-
-      setUnreadInboxCount(count || 0)
+    const fetchForwardedCount = async () => {
+      try {
+        const res = await fetch('/api/forward/inbox/count')
+        const json = await res.json()
+        setUnreadInboxCount(json.count ?? 0)
+      } catch {
+        setUnreadInboxCount(0)
+      }
     }
 
-    fetchUnreadCount()
+    fetchForwardedCount()
 
-    // Set up real-time subscription
-    const channel = supabase
-      .channel('inbox_unread_count')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'inbox_items',
-        filter: `recipient_id=eq.${user.role}`
-      }, () => {
-        fetchUnreadCount()
-      })
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    // Poll every 30 seconds (real-time subscription requires forwarded_documents RLS to be set up)
+    const interval = setInterval(fetchForwardedCount, 30_000)
+    return () => clearInterval(interval)
   }, [user])
 
   async function handleLogoutConfirm() {
@@ -260,20 +248,20 @@ export function Sidebar() {
                 <NavLink key={item.href} item={item}
                   active={pathname === item.href || pendingHref === item.href}
                   onNavigate={setPendingHref}
-                  badgeCount={item.href === '/admin/inbox' ? unreadInboxCount : undefined} />
+                  badgeCount={item.href === '/admin/forwarded' ? unreadInboxCount : undefined} />
               ))
             : isViewerNo201
               ? VIEWER_NAV.map(item => (
                   <NavLink key={item.href} item={item}
                     active={pathname === item.href || pendingHref === item.href}
                     onNavigate={setPendingHref}
-                    badgeCount={item.href === '/admin/inbox' ? unreadInboxCount : undefined} />
+                    badgeCount={item.href === '/admin/forwarded' ? unreadInboxCount : undefined} />
                 ))
             : DOC_NAV.map(item => (
                 <NavLink key={item.href} item={item}
                   active={pathname === item.href || pendingHref === item.href}
                   onNavigate={setPendingHref}
-                  badgeCount={item.href === '/admin/inbox' && !isP1 ? unreadInboxCount : undefined} />
+                  badgeCount={item.href === '/admin/forwarded' ? unreadInboxCount : undefined} />
               ))  
           }
           </div>
@@ -287,7 +275,7 @@ export function Sidebar() {
               <NavLink key={item.href} item={item}
                 active={pathname === item.href || pendingHref === item.href}
                 onNavigate={setPendingHref}
-                badgeCount={item.href === '/admin/inbox' && !isP1 ? unreadInboxCount : undefined} />
+                badgeCount={item.href === '/admin/forwarded' ? unreadInboxCount : undefined} />
             ))}
           </div>
         )}
