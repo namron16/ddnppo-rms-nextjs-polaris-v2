@@ -536,28 +536,6 @@ function AttachmentsTablePanel({
       {/* Breadcrumb */}
       <Breadcrumb navStack={navStack} onNavigateTo={onNavigateTo} />
 
-      {/* Back Button */}
-      {navStack.length > 1 && (
-        <button
-          onClick={() => onNavigateTo(navStack.length - 2)}
-          className="inline-flex items-center gap-2 mb-4 px-4 py-2 bg-white border-2 border-slate-300 hover:border-blue-500 hover:bg-blue-50 text-slate-700 hover:text-blue-700 rounded-xl font-semibold text-sm transition-all shadow-sm hover:shadow-md self-start"
-        >
-          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-          </svg>
-          <span>
-            Back to{' '}
-            <span className="font-bold">
-              {navStack.length >= 2
-                ? navStack[navStack.length - 2].kind === 'order'
-                  ? `${(navStack[navStack.length - 2] as { kind: 'order'; order: SOWithUrl }).order.reference}`
-                  : (navStack[navStack.length - 2] as { kind: 'attachment'; att: SOAttachment }).att.file_name
-                : 'Orders'}
-            </span>
-          </span>
-        </button>
-      )}
-
       {/* Title + actions */}
       <div className="flex items-start justify-between mb-4 gap-4">
         <div className="min-w-0 flex-1">

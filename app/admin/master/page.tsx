@@ -944,22 +944,6 @@ export default function MasterPage() {
                 ) : (
                   <div className="animate-fade-up space-y-5">
 
-                  {/* Back Button */}
-                  {attachmentNavStack.length > 1 && (
-                    <button
-                      onClick={() => handleNavigateTo(attachmentNavStack.length - 2)}
-                      className="inline-flex items-center gap-2 mb-4 px-4 py-2 bg-white border-2 border-slate-300 hover:border-blue-500 hover:bg-blue-50 text-slate-700 hover:text-blue-700 rounded-xl font-semibold text-sm transition-all shadow-sm hover:shadow-md self-start"
-                    >
-                      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-                      </svg>
-                      <span>
-                        Back to{' '}
-                        <span className="font-bold">{backLabel}</span>
-                      </span>
-                    </button>
-                  )}
-
                   <Breadcrumb navStack={attachmentNavStack} onNavigateTo={handleNavigateTo} />
 
                   {/* Document header */}
