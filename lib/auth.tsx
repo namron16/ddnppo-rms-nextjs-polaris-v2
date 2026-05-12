@@ -9,7 +9,6 @@ import React, {
 import { createClient } from './supabase/client'
 import { setCurrentLogger } from './adminLogger'
 import type { Session, User } from '@supabase/supabase-js'
-import {useRouter} from 'next/navigation'
 // ── Role Definitions ──────────────────────────
 export type AdminRole =
   | 'admin' | 'PD' | 'DPDA' | 'DPDO'
@@ -114,7 +113,6 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient()
-  const router = useRouter()
 
   const [user,      setUser]      = useState<AdminUser | null>(null)
   const [session,   setSession]   = useState<Session | null>(null)
@@ -204,7 +202,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut()
     setUser(null)
     setSession(null)
-    router.replace('/login')
+    window.location.href = '/login'
   }, [supabase])
 
   // change password

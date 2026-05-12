@@ -158,6 +158,7 @@ export function Sidebar() {
   async function handleLogoutConfirm() {
     setShowLogoutConfirm(false)
     await logout()
+    router.replace('/login')
   }
 
   function handleProfileUpdated({ displayName, avatarUrl }: { displayName?: string; avatarUrl?: string }) {
