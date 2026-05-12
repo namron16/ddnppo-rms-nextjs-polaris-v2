@@ -1,5 +1,4 @@
-﻿
-import { createClient } from './supabase/client'
+﻿import { createClient } from './supabase/client'
 import type { AdminRole } from './auth'
 
 export type LogActionType =
@@ -14,7 +13,7 @@ export type LogActionType =
   | 'add_library_item' | 'archive_library_item'
   | 'review_document' | 'approve_document' | 'reject_document'
   | 'add_org_member' | 'edit_org_member' | 'remove_org_member'
-  | 'recall_inbox_item' | 'save_inbox_item' | 'change_password'
+  | 'recall_inbox_item' | 'save_inbox_item' | 'change_password' | 'save_forwarded_document'
 
 // Module-level state — set on login via setCurrentLogger()
 let _currentUserId: string | null = null    // Supabase UUID
@@ -42,7 +41,9 @@ export async function logAction(
   if (error) console.warn('[adminLogger] Failed to write log:', error.message)
 }
 
-// ── Convenience wrappers (unchanged API) ──────
+// ── Convenience wrappers ──────────────────────
+// logLogin and logLogout accept the role explicitly so callers don't have
+// to rely on _currentRole being set in time (though it should be by now).
 
 export const logLogin  = (role: AdminRole) =>
   logAction('login',  `${role} logged in`)
@@ -104,3 +105,6 @@ export const logRenameAttachment = (oldName: string, newName: string) =>
 
 export const logPasswordChange = () =>
   logAction('change_password', `Changed password`)
+
+export const logSaveForwardedDocument = (docTitle: string, fromRole: string, targetTable: string) =>
+  logAction('save_forwarded_document', `Saved forwarded "${docTitle}" from ${fromRole} to ${targetTable}`)

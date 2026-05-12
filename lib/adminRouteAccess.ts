@@ -7,7 +7,7 @@ const DOC_ROUTES = [
   '/admin/daily-journals',
   '/admin/organization',
   '/admin/e-library',
-  '/admin/forwarded-files',
+  '/admin/forwarded',
   '/admin/archive',
 ] as const
 
@@ -17,7 +17,7 @@ const VIEWER_DOC_ROUTES = [
   '/admin/daily-journals',
   '/admin/organization',
   '/admin/e-library',
-  '/admin/forwarded-files',
+  '/admin/forwarded',
   '/admin/archive',
 ] as const
 
@@ -27,7 +27,7 @@ const P2_DOC_ROUTES = [
   '/admin/classified-documents',
   '/admin/organization',
   '/admin/e-library',
-  '/admin/forwarded-files',
+  '/admin/forwarded',
   '/admin/archive',
 ] as const
 

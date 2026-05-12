@@ -3,13 +3,41 @@ import { logAction } from "./adminLogger"
 import { AdminRole } from "./auth"
 import { supabase } from "./supabase"
 
+export type DocumentType = 'master_document' | 'admin_order' | 'daily_journal' | 'library'
+
+export interface ForwardAttachmentPayload {
+  originalAttachmentId?: string
+  parentAttachmentId?:   string
+  depth:                 number
+  title:                 string
+  fileName?:             string
+  fileSizeBytes?:        number
+  mimeType?:             string
+  gdriveFileId:          string
+  gdriveUrl:             string
+  poolAccountId:         string
+}
+
+
 export interface ForwardPayload {
-  documentType: 'master' | 'admin_order' | 'daily_journal' | 'library'
-  documentId: string
-  documentTitle: string
-  recipients: AdminRole[]  // one or more roles (e.g., P2–P10)
-  senderId: AdminRole      // the role forwarding the document
-  note?: string
+  recipients:      string[]          // AdminRole[]
+  originalDocId:   string
+  documentType:    DocumentType
+  title:           string
+  notes?:          string
+  gdriveFileId:    string
+  gdriveUrl:       string
+  poolAccountId:   string
+  fileName?:       string
+  fileSizeBytes?:  number
+  mimeType?:       string
+  attachments:     ForwardAttachmentPayload[]
+}
+
+export interface ForwardResult {
+  success: boolean
+  count:   number
+  errors:  { recipient: string; error: string }[]
 }
 
 export interface AttachmentNode {
@@ -21,84 +49,83 @@ export interface AttachmentNode {
   children: AttachmentNode[]  // recursive — preserves full hierarchy
 }
 
+
+
 /**
- * Builds the full attachment tree from attachmentsMap, recursively.
- * Preserves parent→child nesting so recipients get the complete hierarchy.
+ * Sends the forward request to the API.
+ * No GDrive upload happens here — only metadata is sent.
+ */
+export async function forwardDocument(payload: ForwardPayload): Promise<ForwardResult> {
+  const res = await fetch('/api/forward', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(payload),
+  })
+
+  const json = await res.json()
+
+  if (!res.ok) {
+    return { success: false, count: 0, errors: [{ recipient: 'all', error: json.error ?? 'Request failed' }] }
+  }
+
+  return {
+    success: json.success,
+    count:   json.count,
+    errors:  json.errors ?? [],
+  }
+}
+
+/**
+ * Flattens an attachment tree into the ForwardAttachmentPayload[] format.
+ * Use this when building the payload from attachmentsMap.
+ */
+export function flattenAttachmentsForForward(
+  docId: string,
+  attachmentsMap: Map<string, any[]>
+): ForwardAttachmentPayload[] {
+  const flat: ForwardAttachmentPayload[] = []
+
+  function walk(parentId: string, parentAttachmentId: string | undefined, depth: number) {
+    const children = attachmentsMap.get(parentId) ?? []
+    for (const att of children) {
+      flat.push({
+        originalAttachmentId: att.id,
+        parentAttachmentId,
+        depth,
+        title:          att.title ?? att.file_name ?? 'Attachment',
+        fileName:       att.file_name,
+        fileSizeBytes:  att.file_size_bytes,
+        mimeType:       att.mime_type,
+        gdriveFileId:   att.gdrive_file_id,
+        gdriveUrl:      att.gdrive_url,
+        poolAccountId:  att.pool_account_id,
+      })
+      walk(att.id, att.id, depth + 1)
+    }
+  }
+
+  walk(docId, undefined, 0)
+  return flat
+}
+
+
+/**
+ * Builds a nested attachment tree from a flat list.
+ * Used in the inbox to reconstruct hierarchy for display.
  */
 export function buildAttachmentTree(
-  rootId: string,
-  attachmentsMap: Map<string, any[]>
-): AttachmentNode[] {
-  const directChildren = (attachmentsMap.get(rootId) ?? []).filter(a => !a.archived)
-  return directChildren.map(att => ({
-    id: att.id,
-    file_name: att.file_name,
-    file_url: att.file_url,
-    file_size: att.file_size,
-    file_type: att.file_type,
-    children: buildAttachmentTree(att.id, attachmentsMap),
-  }))
+  attachments: any[],
+  parentId: string | null = null
+): any[] {
+  return attachments
+    .filter(a => (a.parent_attachment_id ?? null) === parentId)
+    .map(a => ({
+      ...a,
+      children: buildAttachmentTree(attachments, a.original_attachment_id ?? a.id),
+    }))
 }
 
-/**
- * Forwards a document from a sender to one or more recipient accounts.
- * Creates one inbox_item row per recipient.
- * Full document hierarchy (parent + all nested attachments) is serialized into the row.
- */
-export async function forwardDocument(
-  payload: ForwardPayload,
-  documentData: Record<string, any>,
-  attachmentsMap: Map<string, any[]>
-): Promise<{ success: boolean; count: number }> {
-  const attachmentTree = buildAttachmentTree(payload.documentId, attachmentsMap)
-  const nowIso = new Date().toISOString()
 
-  const baseRows = payload.recipients.map(recipient => ({
-    id: `fwd-${Date.now()}-${recipient}-${Math.random().toString(36).slice(2)}`,
-    recipient_id: recipient,
-    sender_id: payload.senderId,
-    document_type: payload.documentType,
-    document_id: payload.documentId,
-    document_title: payload.documentTitle,
-    document_data: documentData,
-    file_url: documentData.fileUrl ?? null,
-    attachments: JSON.stringify(attachmentTree),
-    status: 'unread',
-  }))
-
-  // Schema compatibility: some environments use forwarded_at, others use created_at.
-  const firstAttemptRows = baseRows.map(row => ({ ...row, forwarded_at: nowIso }))
-  let { error } = await supabase.from('inbox_items').insert(firstAttemptRows)
-
-  if (error && error.code === '42703') {
-    const secondAttemptRows = baseRows.map(row => ({ ...row, created_at: nowIso }))
-    const retry = await supabase.from('inbox_items').insert(secondAttemptRows)
-    error = retry.error
-  }
-
-  if (error) {
-    console.error('forwardDocument error:', {
-      message: error.message,
-      code: error.code,
-      details: error.details,
-      hint: error.hint,
-    })
-    return { success: false, count: 0 }
-  }
-
-  // Log the forward action
-  for (const recipient of payload.recipients) {
-    await logAction('forward_document', 
-      `${payload.senderId} forwarded "${payload.documentTitle}" to ${recipient}`, payload.senderId)
-  }
-
-  return { success: true, count: baseRows.length }
-}
-
-/**
- * P2–P10 saves an inbox item into one of their document pages.
- * The document is stored under their account in Supabase, linked to their Google Drive.
- */
 export async function saveInboxItemToPage(
   inboxItemId: string,
   recipientId: AdminRole,
