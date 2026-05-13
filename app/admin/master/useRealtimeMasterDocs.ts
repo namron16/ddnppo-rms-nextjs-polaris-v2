@@ -1,10 +1,16 @@
 // PATCH: app/admin/master/useRealtimeMasterDocs.ts
 // Drop-in realtime extension for the Master Documents page.
-// Import and call this hook inside MasterPage after state is initialised.
-//
-// Usage inside MasterPage:
-//   import { useRealtimeMasterDocs } from './useRealtimeMasterDocs'
-//   useRealtimeMasterDocs({ setDocuments, setAttachmentsMap, user, isPrivileged, isP1 })
+// UPDATED: aligned to new master_document_attachments schema
+//   parent_id (was parent_attachment_id)
+//   title + file_name (was just file_name)
+//   gdrive_url (was file_url)
+//   gdrive_file_id (new, required)
+//   pool_account_id (new, required)
+//   file_size_bytes bigint (was file_size string)
+//   mime_type (was file_type string)
+//   created_at (was uploaded_at)
+//   depth int (new)
+//   archived + uploaded_by columns removed
 
 'use client'
 
@@ -29,48 +35,54 @@ interface DocEnriched {
   children?: any[]
 }
 
+// Aligned to new master_document_attachments schema
 interface DocAttachment {
   id: string
   document_id: string
-  parent_attachment_id: string | null
-  file_name: string
-  file_url: string
-  file_size: string
-  file_type: string
-  uploaded_at: string
-  uploaded_by: string
-  archived: boolean
+  parent_id: string | null          // was parent_attachment_id
+  depth: number                     // new
+  title: string                     // new – display name
+  file_name: string | null          // now nullable
+  file_size_bytes: number | null    // was file_size: string
+  mime_type: string | null          // was file_type: string
+  gdrive_file_id: string            // new
+  gdrive_url: string                // was file_url
+  pool_account_id: string           // new
+  created_at: string                // was uploaded_at
+  // NOTE: archived + uploaded_by removed from schema
 }
 
 function normalise(row: any): DocEnriched {
   return {
-    id: row.id,
-    title: row.title,
-    level: row.level,
-    type: row.type,
-    date: row.date,
-    size: row.size,
-    tag: row.tag,
-    fileUrl: row.file_url ?? undefined,
-    taggedAdminAccess: Array.isArray(row.tagged_admin_access) ? row.tagged_admin_access : undefined,
-    taggedRoles: Array.isArray(row.tagged_admin_access) ? row.tagged_admin_access : [],
-    canView: true,
-    isRestricted: false,
+    id:                 row.id,
+    title:              row.title,
+    level:              row.level,
+    type:               row.type,
+    date:               row.date,
+    size:               row.size,
+    tag:                row.tag,
+    fileUrl:            row.file_url ?? undefined,
+    taggedAdminAccess:  Array.isArray(row.tagged_admin_access) ? row.tagged_admin_access : undefined,
+    taggedRoles:        Array.isArray(row.tagged_admin_access) ? row.tagged_admin_access : [],
+    canView:            true,
+    isRestricted:       false,
   }
 }
 
 function normaliseAtt(row: any): DocAttachment {
   return {
-    id: row.id,
-    document_id: row.document_id,
-    parent_attachment_id: row.parent_attachment_id ?? null,
-    file_name: row.file_name,
-    file_url: row.file_url,
-    file_size: row.file_size,
-    file_type: row.file_type,
-    uploaded_at: row.uploaded_at,
-    uploaded_by: row.uploaded_by,
-    archived: row.archived === true,
+    id:               row.id,
+    document_id:      row.document_id,
+    parent_id:        row.parent_id ?? null,
+    depth:            row.depth ?? 0,
+    title:            row.title ?? '',
+    file_name:        row.file_name ?? null,
+    file_size_bytes:  row.file_size_bytes ?? null,
+    mime_type:        row.mime_type ?? null,
+    gdrive_file_id:   row.gdrive_file_id,
+    gdrive_url:       row.gdrive_url,
+    pool_account_id:  row.pool_account_id,
+    created_at:       row.created_at,
   }
 }
 
@@ -88,15 +100,14 @@ export function useRealtimeMasterDocs({ setDocuments, setAttachmentsMap, user, i
   useEffect(() => { setDocsRef.current = setDocuments }, [setDocuments])
   useEffect(() => { setAttsRef.current = setAttachmentsMap }, [setAttachmentsMap])
 
-  // Initial load
+  // ── Initial load ──────────────────────────────────────────────────────
   useEffect(() => {
     const loadInitialDocuments = async () => {
-      const query = supabase
+      const { data, error } = await supabase
         .from('master_documents')
         .select('*')
         .order('created_at', { ascending: false })
 
-      const { data, error } = await query
       if (error) {
         console.error('Error loading master documents:', error)
         return
@@ -120,14 +131,16 @@ export function useRealtimeMasterDocs({ setDocuments, setAttachmentsMap, user, i
       const docs = (data ?? [])
         .map(normalise)
         .filter(doc => !archivedIds.has(doc.id))
+
       setDocsRef.current(docs)
     }
 
     loadInitialDocuments()
   }, [user, isPrivileged])
 
+  // ── Realtime subscriptions ────────────────────────────────────────────
   useEffect(() => {
-    // ── Master documents ──────────────────────────
+    // ── Master documents ──────────────────────────────────────────────
     const docsChannel = supabase
       .channel('rt_master_documents')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'master_documents' }, payload => {
@@ -142,7 +155,6 @@ export function useRealtimeMasterDocs({ setDocuments, setAttachmentsMap, user, i
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'master_documents' }, payload => {
         const row = payload.new as any
         if (row.archived) {
-          // Remove from list when archived
           setDocsRef.current(prev => prev.filter(d => d.id !== row.id))
           return
         }
@@ -150,13 +162,13 @@ export function useRealtimeMasterDocs({ setDocuments, setAttachmentsMap, user, i
           d.id === row.id
             ? {
                 ...d,
-                title: row.title,
-                level: row.level,
-                type: row.type,
-                date: row.date,
-                tag: row.tag,
+                title:             row.title,
+                level:             row.level,
+                type:              row.type,
+                date:              row.date,
+                tag:               row.tag,
                 taggedAdminAccess: Array.isArray(row.tagged_admin_access) ? row.tagged_admin_access : undefined,
-                taggedRoles: Array.isArray(row.tagged_admin_access) ? row.tagged_admin_access : [],
+                taggedRoles:       Array.isArray(row.tagged_admin_access) ? row.tagged_admin_access : [],
               }
             : d
         ))
@@ -167,12 +179,13 @@ export function useRealtimeMasterDocs({ setDocuments, setAttachmentsMap, user, i
       })
       .subscribe()
 
-    // ── Attachments ────────────────────────────────
+    // ── Attachments ───────────────────────────────────────────────────
     const attsChannel = supabase
       .channel('rt_master_doc_attachments')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'master_document_attachments' }, payload => {
         const att = normaliseAtt(payload.new)
-        const mapKey = att.parent_attachment_id ?? att.document_id
+        // Index by parent_id if present, else by document_id
+        const mapKey = att.parent_id ?? att.document_id
         setAttsRef.current(prev => {
           const next = new Map(prev)
           const existing = next.get(mapKey) ?? []
@@ -183,13 +196,25 @@ export function useRealtimeMasterDocs({ setDocuments, setAttachmentsMap, user, i
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'master_document_attachments' }, payload => {
         const att = normaliseAtt(payload.new)
-        const mapKey = att.parent_attachment_id ?? att.document_id
+        const mapKey = att.parent_id ?? att.document_id
         setAttsRef.current(prev => {
           const next = new Map(prev)
-          // Update in all possible keys (archived moves it from "visible" to hidden)
+          // Update in whichever bucket holds this attachment ID
           for (const [k, list] of next) {
             if (list.some(a => a.id === att.id)) {
               next.set(k, list.map(a => a.id === att.id ? att : a))
+            }
+          }
+          return next
+        })
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'master_document_attachments' }, payload => {
+        const row = payload.old as any
+        setAttsRef.current(prev => {
+          const next = new Map(prev)
+          for (const [k, list] of next) {
+            if (list.some(a => a.id === row.id)) {
+              next.set(k, list.filter(a => a.id !== row.id))
             }
           }
           return next
