@@ -1,16 +1,11 @@
 'use client'
-// lib/auth.tsx — Supabase Auth-backed RBAC
-// No hardcoded accounts. All identity comes from Supabase Auth + profiles table.
+// lib/auth.tsx
 
-import React, {
-  createContext, useContext, useState,
-  useCallback, useEffect,
-} from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import { createClient } from './supabase/client'
 import { setCurrentLogger, logLogin } from './adminLogger'
 import type { Session, User } from '@supabase/supabase-js'
 
-// ── Role Definitions ──────────────────────────
 export type AdminRole =
   | 'admin' | 'PD' | 'DPDA' | 'DPDO'
   | 'P1' | 'P2' | 'P3' | 'P4' | 'P5'
@@ -19,26 +14,26 @@ export type AdminRole =
 export type RoleLevel = 'head' | 'deputy' | 'super_admin' | 'viewer'
 
 export interface AdminUser {
-  id:           string        // Supabase auth UUID
-  role:         AdminRole
-  email:        string
-  name:         string
-  title:        string
-  level:        RoleLevel
-  initials:     string
-  avatarColor:  string
-  avatarUrl?:   string
+  id:          string
+  role:        AdminRole
+  email:       string
+  name:        string
+  title:       string
+  level:       RoleLevel
+  initials:    string
+  avatarColor: string
+  avatarUrl?:  string
   permissions: {
-    canUpload:            boolean
-    canApproveReview:     boolean
-    canApproveFinal:      boolean
-    canManageUsers:       boolean
-    canManageVisibility:  boolean
-    canViewAll:           boolean
+    canUpload:           boolean
+    canApproveReview:    boolean
+    canApproveFinal:     boolean
+    canManageUsers:      boolean
+    canManageVisibility: boolean
+    canViewAll:          boolean
   }
 }
 
-// ── Role → Permissions Map ────────────────────
+// ── Helpers (unchanged) ───────────────────────────────────────────────────────
 
 function permissionsForRole(role: AdminRole): AdminUser['permissions'] {
   switch (role) {
@@ -64,11 +59,9 @@ function permissionsForRole(role: AdminRole): AdminUser['permissions'] {
 function levelForRole(role: AdminRole): RoleLevel {
   if (role === 'admin') return 'super_admin'
   if (role === 'DPDA' || role === 'DPDO') return 'deputy'
-  if (role === 'PD' || role === 'P1') return 'head'
+  if (role === 'PD'   || role === 'P1')   return 'head'
   return 'viewer'
 }
-
-// ── Build AdminUser from Supabase data ────────
 
 interface ProfileRow {
   role:         string
@@ -95,17 +88,32 @@ function buildAdminUser(user: User, profile: ProfileRow): AdminUser {
   }
 }
 
-// ── Auth Context ──────────────────────────────
+// ── The actual profile fetch — one place, one responsibility ─────────────────
 
-export type OtpStep = 'email' | 'otp' | 'password' | 'done'
+async function fetchProfile(supabase: ReturnType<typeof createClient>, user: User): Promise<AdminUser | null> {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('role, display_name, title, initials, avatar_color, avatar_url')
+      .eq('id', user.id)
+      .single()
+
+    if (error || !data) return null
+    return buildAdminUser(user, data as ProfileRow)
+  } catch {
+    return null
+  }
+}
+
+// ── Context ───────────────────────────────────────────────────────────────────
 
 interface AuthContextValue {
-  user:      AdminUser | null
-  session:   Session | null
-  isLoading: boolean
+  user:           AdminUser | null
+  session:        Session | null
+  isLoading:      boolean
   loginPassword:  (email: string, password: string) => Promise<{ error: string | null }>
   logout:         () => Promise<void>
-  changePassword: (currentPassword: string, newPassword: string) => Promise<{ error: string | null }>
+  changePassword: (current: string, next: string)   => Promise<{ error: string | null }>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -117,143 +125,85 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session,   setSession]   = useState<Session | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // ── Load profile from DB ──────────────────
-  // ALWAYS resolves — even on error — so isLoading never stays true forever.
-
-  async function loadProfile(authUser: User): Promise<AdminUser | null> {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('role, display_name, title, initials, avatar_color, avatar_url')
-        .eq('id', authUser.id)
-        .single()
-
-      if (error || !data) {
-        console.error('loadProfile error:', error?.message)
-        return null
-      }
-
-      return buildAdminUser(authUser, data as ProfileRow)
-    } catch (err) {
-      // Network error, RLS block, etc. — log and return null rather than hanging.
-      console.error('loadProfile threw:', err)
-      return null
-    }
-  }
-
-  // ── Session Listener ──────────────────────
+  // ── On mount: check for an existing session exactly once ─────────────────
+  // This covers page refresh and direct URL navigation.
+  // onAuthStateChange is NOT used — it's the source of the race conditions.
 
   useEffect(() => {
-    let mounted = true
+    let cancelled = false
 
-    // Initial session check
-    supabase.auth.getSession().then(async ({ data: { session: s } }) => {
-      if (!mounted) return
+    async function init() {
+      try {
+        const { data: { session: s } } = await supabase.auth.getSession()
 
-      if (s?.user) {
-        const adminUser = await loadProfile(s.user)
-        if (!mounted) return
-        setUser(adminUser)
-        setSession(s)
-        if (adminUser) setCurrentLogger(adminUser.role as AdminRole, adminUser.id)
-      }
-
-      // Always clear loading — even if loadProfile returned null.
-      setIsLoading(false)
-    }).catch(() => {
-      if (mounted) setIsLoading(false)
-    })
-
-    // Listen for auth state changes (login, logout, token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, s) => {
-        if (!mounted) return
+        if (cancelled) return
 
         if (s?.user) {
-          const adminUser = await loadProfile(s.user)
-          if (!mounted) return
+          const adminUser = await fetchProfile(supabase, s.user)
+          if (cancelled) return
           setUser(adminUser)
           setSession(s)
-          if (adminUser) setCurrentLogger(adminUser.role as AdminRole, adminUser.id)
-        } else {
-          setUser(null)
-          setSession(null)
-          setCurrentLogger(null)
+          if (adminUser) setCurrentLogger(adminUser.role, adminUser.id)
         }
-
-        setIsLoading(false)
+      } catch {
+        // Network failure — not logged in, proceed to login page
+      } finally {
+        if (!cancelled) setIsLoading(false)
       }
-    )
-
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
-  // ── Password Login ────────────────────────
-  // FIX: setCurrentLogger is called BEFORE logLogin so the logger's
-  //      module-level _currentUserId / _currentRole are populated when
-  //      logLogin runs. Previously the log insert was silently skipped
-  //      because _currentUserId was still null.
+    void init()
+    return () => { cancelled = true }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Login: fetch profile immediately, set everything at once ─────────────
 
   const loginPassword = useCallback(async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
-    if (error) return { error: error.message }
+    if (error)      return { error: error.message }
     if (!data.user) return { error: 'No user returned.' }
 
-    const adminUser = await loadProfile(data.user)
+    const adminUser = await fetchProfile(supabase, data.user)
     if (!adminUser) return { error: 'Account profile not found. Contact your administrator.' }
 
+    // Set everything atomically — no partial state
     setUser(adminUser)
     setSession(data.session)
-
-    // Set the logger context FIRST so logLogin can write the row.
-    setCurrentLogger(adminUser.role as AdminRole, adminUser.id)
+    setCurrentLogger(adminUser.role, adminUser.id)
     await logLogin(adminUser.role)
 
     return { error: null }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase])
+  }, [supabase]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Logout ────────────────────────────────
+  // ── Logout ────────────────────────────────────────────────────────────────
 
   const logout = useCallback(async () => {
     setCurrentLogger(null)
-    await supabase.auth.signOut()
     setUser(null)
     setSession(null)
+    await supabase.auth.signOut()
     window.location.href = '/login'
   }, [supabase])
 
-  // ── Change password ───────────────────────
+  // ── Change password ───────────────────────────────────────────────────────
 
-  const changePassword = useCallback(async (
-    currentPassword: string,
-    newPassword: string,
-  ): Promise<{ error: string | null }> => {
-    if (!user?.email) {
-      return { error: 'Session error. Please log out and log back in.' }
-    }
+  const changePassword = useCallback(async (current: string, next: string) => {
+    if (!user?.email) return { error: 'Session error. Please log out and back in.' }
 
     const { error: reAuthError } = await supabase.auth.signInWithPassword({
-      email:    user.email,
-      password: currentPassword,
+      email: user.email, password: current,
     })
     if (reAuthError) return { error: 'Current password is incorrect.' }
 
-    const { error: updateError } = await supabase.auth.updateUser({ password: newPassword })
+    const { error: updateError } = await supabase.auth.updateUser({ password: next })
     if (updateError) return { error: updateError.message }
 
     return { error: null }
   }, [supabase, user])
 
   return (
-    <AuthContext.Provider value={{
-      user, session, isLoading, loginPassword, logout, changePassword,
-    }}>
+    <AuthContext.Provider value={{ user, session, isLoading, loginPassword, logout, changePassword }}>
       {children}
     </AuthContext.Provider>
   )
@@ -271,5 +221,5 @@ export function canUserViewDocument(user: AdminUser, visibleToRoles: AdminRole[]
 }
 
 export function isAdminRole(user: AdminUser | null): boolean {
-  return user !== null
+  return user !== null && user.role === 'admin'
 }
