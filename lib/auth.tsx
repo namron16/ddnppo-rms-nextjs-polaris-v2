@@ -7,8 +7,9 @@ import React, {
   useCallback, useEffect,
 } from 'react'
 import { createClient } from './supabase/client'
-import { setCurrentLogger } from './adminLogger'
+import { setCurrentLogger, logLogin } from './adminLogger'
 import type { Session, User } from '@supabase/supabase-js'
+
 // ── Role Definitions ──────────────────────────
 export type AdminRole =
   | 'admin' | 'PD' | 'DPDA' | 'DPDO'
@@ -38,7 +39,6 @@ export interface AdminUser {
 }
 
 // ── Role → Permissions Map ────────────────────
-// Derived from role, not stored per-account.
 
 function permissionsForRole(role: AdminRole): AdminUser['permissions'] {
   switch (role) {
@@ -56,7 +56,6 @@ function permissionsForRole(role: AdminRole): AdminUser['permissions'] {
       return { canUpload: true, canApproveReview: false, canApproveFinal: false,
                canManageUsers: true, canManageVisibility: true, canViewAll: true }
     default:
-      // P2–P10
       return { canUpload: true, canApproveReview: false, canApproveFinal: true,
                canManageUsers: false, canManageVisibility: false, canViewAll: true }
   }
@@ -104,8 +103,8 @@ interface AuthContextValue {
   user:      AdminUser | null
   session:   Session | null
   isLoading: boolean
-  loginPassword: (email: string, password: string) => Promise<{ error: string | null }>
-  logout:        () => Promise<void>
+  loginPassword:  (email: string, password: string) => Promise<{ error: string | null }>
+  logout:         () => Promise<void>
   changePassword: (currentPassword: string, newPassword: string) => Promise<{ error: string | null }>
 }
 
@@ -119,43 +118,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
 
   // ── Load profile from DB ──────────────────
+  // ALWAYS resolves — even on error — so isLoading never stays true forever.
 
   async function loadProfile(authUser: User): Promise<AdminUser | null> {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('role, display_name, title, initials, avatar_color, avatar_url')
-      .eq('id', authUser.id)
-      .single()
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('role, display_name, title, initials, avatar_color, avatar_url')
+        .eq('id', authUser.id)
+        .single()
 
-      console.log('loadProfile:', { id: authUser.id, data, error })
+      if (error || !data) {
+        console.error('loadProfile error:', error?.message)
+        return null
+      }
 
-    if (error || !data) {
-      console.error('loadProfile error:', error?.message)
+      return buildAdminUser(authUser, data as ProfileRow)
+    } catch (err) {
+      // Network error, RLS block, etc. — log and return null rather than hanging.
+      console.error('loadProfile threw:', err)
       return null
     }
-
-    return buildAdminUser(authUser, data as ProfileRow)
   }
 
   // ── Session Listener ──────────────────────
 
   useEffect(() => {
+    let mounted = true
+
     // Initial session check
     supabase.auth.getSession().then(async ({ data: { session: s } }) => {
+      if (!mounted) return
+
       if (s?.user) {
         const adminUser = await loadProfile(s.user)
+        if (!mounted) return
         setUser(adminUser)
         setSession(s)
         if (adminUser) setCurrentLogger(adminUser.role as AdminRole, adminUser.id)
       }
+
+      // Always clear loading — even if loadProfile returned null.
       setIsLoading(false)
+    }).catch(() => {
+      if (mounted) setIsLoading(false)
     })
 
     // Listen for auth state changes (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, s) => {
+        if (!mounted) return
+
         if (s?.user) {
           const adminUser = await loadProfile(s.user)
+          if (!mounted) return
           setUser(adminUser)
           setSession(s)
           if (adminUser) setCurrentLogger(adminUser.role as AdminRole, adminUser.id)
@@ -164,23 +180,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(null)
           setCurrentLogger(null)
         }
+
         setIsLoading(false)
       }
     )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-
-
-  // Password Login ────────────────
+  // ── Password Login ────────────────────────
+  // FIX: setCurrentLogger is called BEFORE logLogin so the logger's
+  //      module-level _currentUserId / _currentRole are populated when
+  //      logLogin runs. Previously the log insert was silently skipped
+  //      because _currentUserId was still null.
 
   const loginPassword = useCallback(async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) return { error: error.message }
     if (!data.user) return { error: 'No user returned.' }
@@ -190,7 +209,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     setUser(adminUser)
     setSession(data.session)
+
+    // Set the logger context FIRST so logLogin can write the row.
     setCurrentLogger(adminUser.role as AdminRole, adminUser.id)
+    await logLogin(adminUser.role)
 
     return { error: null }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -198,7 +220,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ── Logout ────────────────────────────────
 
-  // in auth.tsx logout:
   const logout = useCallback(async () => {
     setCurrentLogger(null)
     await supabase.auth.signOut()
@@ -207,43 +228,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = '/login'
   }, [supabase])
 
-  // change password
-  
+  // ── Change password ───────────────────────
+
   const changePassword = useCallback(async (
     currentPassword: string,
     newPassword: string,
   ): Promise<{ error: string | null }> => {
-
-    // user is guaranteed non-null here because the modal
-    // only renders when the user is authenticated.
     if (!user?.email) {
       return { error: 'Session error. Please log out and log back in.' }
     }
 
-    // ── Step A: Re-authenticate with the current password ──
-    // This is the critical security step. Without it, anyone who
-    // walks up to an unlocked screen could change the password.
     const { error: reAuthError } = await supabase.auth.signInWithPassword({
       email:    user.email,
       password: currentPassword,
     })
+    if (reAuthError) return { error: 'Current password is incorrect.' }
 
-    if (reAuthError) {
-      // Return a generic message — don't leak Supabase internals
-      return { error: 'Current password is incorrect.' }
-    }
+    const { error: updateError } = await supabase.auth.updateUser({ password: newPassword })
+    if (updateError) return { error: updateError.message }
 
-  // ── Step B: Set the new password ──
-  const { error: updateError } = await supabase.auth.updateUser({
-    password: newPassword,
-  })
-
-  if (updateError) {
-    return { error: updateError.message }
-  }
-
-  return { error: null }
-}, [supabase, user])
+    return { error: null }
+  }, [supabase, user])
 
   return (
     <AuthContext.Provider value={{
