@@ -1,6 +1,7 @@
 'use client'
-// components/modals/AddDocumentModal.tsx  (v3 — Drive Pool upload)
-// P1-only upload modal. Uses useDriveUpload() instead of supabase.storage.
+// components/modals/AddDocumentModal.tsx
+// Uses useDriveUpload() — now receives full DriveUploadResult (not just a URL string)
+// so gdriveFileId, poolAccountId, recordId, and downloadUrl are all persisted.
 
 import { useState, useRef } from 'react'
 import { Modal }    from '@/components/ui/Modal'
@@ -13,7 +14,14 @@ import { useDriveUpload } from '@/hooks/useGDriveTool'
 import type { MasterDocument } from '@/types'
 import type { AdminRole } from '@/lib/auth'
 
-type DocWithUrl = MasterDocument & { fileUrl?: string }
+type DocWithUrl = MasterDocument & {
+  fileUrl?: string
+  // Drive metadata — persisted to Supabase so the record is complete
+  gdrive_file_id?:  string
+  gdrive_url?:      string
+  pool_account_id?: string
+  download_url?:    string
+}
 
 interface AddDocumentModalProps {
   open: boolean
@@ -33,7 +41,6 @@ export function AddDocumentModal({ open, onClose, onAdd }: AddDocumentModalProps
   const [file, setFile]           = useState<File | null>(null)
   const [dragging, setDragging]   = useState(false)
   const [errors, setErrors]       = useState<Record<string, string>>({})
-  const [taggedRoles, setTaggedRoles] = useState<AdminRole[]>([])
 
   const [form, setForm] = useState({
     title: '', level: 'REGIONAL', type: 'PDF', date: today, tag: 'COMPLIANCE',
@@ -61,7 +68,6 @@ export function AddDocumentModal({ open, onClose, onAdd }: AddDocumentModalProps
     setForm({ title: '', level: 'REGIONAL', type: 'PDF', date: today, tag: 'COMPLIANCE' })
     setErrors({})
     setFile(null)
-    setTaggedRoles([])
     if (fileInputRef.current) fileInputRef.current.value = ''
     onClose()
   }
@@ -89,20 +95,22 @@ export function AddDocumentModal({ open, onClose, onAdd }: AddDocumentModalProps
     try {
       const newDocId = `md-${Date.now()}`
 
-      // ── Drive Pool upload (replaces supabase.storage) ─────────────────
-      const fileUrl = await uploadToDrive(file, 'master_documents', {
+      // ── Drive Pool upload — returns full metadata or null on failure ───
+      const driveResult = await uploadToDrive(file, 'master_documents', {
         uploadedBy: user.role,
         entityId:   newDocId,
         entityType: 'master_document',
       })
 
-      if (!fileUrl) {
+      if (!driveResult) {
+        // uploadToDrive already set its internal error state; surface it
         toast.error(uploadError ?? 'File upload failed. Please try again.')
         return
       }
 
       const fileSize = (file.size / 1024 / 1024).toFixed(1) + ' MB'
 
+      // Build the full document record including all Drive metadata
       const newDoc: DocWithUrl = {
         id:      newDocId,
         title:   result.data.title,
@@ -111,20 +119,24 @@ export function AddDocumentModal({ open, onClose, onAdd }: AddDocumentModalProps
         date:    result.data.date,
         size:    fileSize,
         tag:     result.data.tag,
-        fileUrl,
-        taggedAdminAccess: taggedRoles,
+
+        // Drive metadata — stored on the record so the detail panel
+        // can render the View / Download / Print buttons immediately
+        fileUrl:          driveResult.fileUrl,
+        gdrive_file_id:   driveResult.gdriveFileId,
+        gdrive_url:       driveResult.fileUrl,
+        pool_account_id:  driveResult.poolAccountId,
+        download_url:     driveResult.downloadUrl,
       }
 
       if (onAdd) await onAdd(newDoc)
 
-      const tagSummary = taggedRoles.length === 0
-        ? 'No P2–P10 tagged — all viewers restricted.'
-        : `Tagged: ${taggedRoles.join(', ')}`
+      
 
-      toast.success(`"${result.data.title}" uploaded. ${tagSummary} DPDA & DPDO notified.`)
+      toast.success(`"${result.data.title}" uploaded successfully.`)
       resetAndClose()
     } catch (err) {
-      console.error(err)
+      console.error('[AddDocumentModal] handleSubmit error:', err)
       toast.error('Something went wrong. Please try again.')
     }
   }

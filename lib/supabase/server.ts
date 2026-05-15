@@ -1,8 +1,7 @@
-// lib/supabase/server.ts
-// Use in Server Components, Route Handlers, and middleware
-
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+
+const isProduction = process.env.NODE_ENV === 'production'
 
 export async function createClient() {
   const cookieStore = await cookies()
@@ -16,10 +15,15 @@ export async function createClient() {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              cookieStore.set(name, value, {
+                ...options,
+                secure:   isProduction,
+                httpOnly: true,
+                sameSite: 'lax',
+              })
             )
           } catch {
-            // setAll called from a Server Component — safe to ignore
+            // called from a Server Component — safe to ignore
           }
         },
       },

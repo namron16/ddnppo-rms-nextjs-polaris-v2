@@ -4,11 +4,11 @@ import { uploadViaPool } from '@/lib/gdrive-pool/migrate-modal'
 import type { DocumentCategory } from '@/lib/gdrive-pool/types'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60   // seconds (file uploads can be slow)
+export const maxDuration = 60
 
 export async function POST(request: Request) {
   try {
-    const formData = await request.formData()
+    const formData       = await request.formData()
     const file            = formData.get('file')       as File | null
     const category        = formData.get('category')   as DocumentCategory | null
     const entityType      = formData.get('entityType') as string | null
@@ -23,9 +23,21 @@ export async function POST(request: Request) {
       )
     }
 
-    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+    // ── MIME check: allow PDF, images, and common document types ────────────
+    const allowedMimes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ]
+    const isAllowed =
+      file.type.startsWith('image/') ||
+      allowedMimes.includes(file.type)
+
+    if (!isAllowed) {
       return NextResponse.json(
-        { error: `File type not allowed: ${file.type}. Only PDF and images are accepted.` },
+        { error: `File type not allowed: ${file.type}. Accepted: PDF, images, DOCX, XLSX.` },
         { status: 415 }
       )
     }
@@ -36,6 +48,8 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer())
+
+    console.log(`[Upload API] Starting upload: ${file.name} (${file.type}, ${file.size} bytes) → category=${category}, uploadedBy=${uploadedBy}`)
 
     const result = await uploadViaPool({
       file:          buffer,
@@ -49,9 +63,16 @@ export async function POST(request: Request) {
       preferredPoolId: preferredPoolId ?? undefined,
     })
 
+    console.log(`[Upload API] Success: gdriveFileId=${result.gdriveFileId}, poolAccountId=${result.poolAccountId}`)
+
     return NextResponse.json({ data: result }, { status: 201 })
   } catch (err: any) {
-    console.error('[Upload API]', err.message)
-    return NextResponse.json({ error: err.message ?? 'Internal server error' }, { status: 500 })
+    // Log the FULL error so it appears in your server logs / Vercel function logs
+    console.error('[Upload API] FAILED:', err?.message ?? err)
+    console.error('[Upload API] Stack:', err?.stack)
+    return NextResponse.json(
+      { error: err?.message ?? 'Internal server error' },
+      { status: 500 }
+    )
   }
 }

@@ -1,6 +1,17 @@
 // lib/gdrive-pool/drive-client.ts
 // Google Drive API v3 wrapper with automatic token refresh.
-// Uses googleapis npm package — install with: npm install googleapis
+//
+// SCOPE FIX: Changed from 'drive.file' to 'drive' scope.
+// 'drive.file' only allows access to files THIS app created, and critically
+// cannot use files.list() to search for existing folders — it always returns
+// empty results. This meant folder resolution always tried to CREATE a new
+// folder, and the parent folder (root_folder_id) may not be accessible.
+// 'drive' scope gives full Drive access, which is required for folder
+// management and searching across the account.
+//
+// NOTE: Existing connected accounts were authorized with the old scope.
+// They must reconnect (re-run the OAuth flow) for the new scope to apply.
+// The reconnect URL is: /api/gdrive/connect?username=<username>
 
 import { google, drive_v3 } from 'googleapis'
 import type { GaxiosResponse } from 'gaxios'
@@ -29,11 +40,6 @@ function buildOAuth2Client() {
   return new google.auth.OAuth2(clientId, clientSecret)
 }
 
-/**
- * Returns an authorized OAuth2 client for a given pool account.
- * Automatically refreshes the access token if expired.
- * Throws and marks the account as ERROR on invalid_grant.
- */
 export async function getAuthorizedClient(poolId: string) {
   const oauth2 = buildOAuth2Client()
 
@@ -60,7 +66,6 @@ export async function getAuthorizedClient(poolId: string) {
       throw new Error('Google returned no access_token during refresh.')
     }
 
-    // Persist the new access token
     await saveAccessToken(
       poolId,
       credentials.access_token,
@@ -106,9 +111,6 @@ export async function getAuthorizedClient(poolId: string) {
   }
 }
 
-/**
- * Returns a Drive v3 client pre-authorized for the given pool account.
- */
 export async function getDriveClient(poolId: string): Promise<drive_v3.Drive> {
   const auth = await getAuthorizedClient(poolId)
   return google.drive({ version: 'v3', auth })
@@ -118,10 +120,6 @@ export async function getDriveClient(poolId: string): Promise<drive_v3.Drive> {
 // FOLDER OPERATIONS
 // =============================================================================
 
-/**
- * Finds an existing folder by name under a parent, or creates it.
- * Returns the Drive folder ID and whether it was newly created.
- */
 export async function findOrCreateFolder(
   drive: drive_v3.Drive,
   folderName: string,
@@ -162,10 +160,6 @@ export async function findOrCreateFolder(
   return { folderId: createRes.data.id, folderName, isNew: true }
 }
 
-/**
- * Creates the root "DDNPPO RMS" folder in a user's Drive.
- * Called once during account connect.
- */
 export async function createRootFolder(drive: drive_v3.Drive): Promise<string> {
   const res = await drive.files.create({
     requestBody: {
@@ -183,10 +177,6 @@ export async function createRootFolder(drive: drive_v3.Drive): Promise<string> {
 // FILE OPERATIONS
 // =============================================================================
 
-/**
- * Uploads a file buffer to Google Drive under the specified parent folder.
- * Returns full Drive file metadata.
- */
 export async function uploadFileToDrive(params: {
   drive: drive_v3.Drive
   fileBuffer: Buffer | Uint8Array
@@ -196,7 +186,6 @@ export async function uploadFileToDrive(params: {
 }): Promise<DriveFileMetadata> {
   const { drive, fileBuffer, fileName, mimeType, parentFolderId } = params
 
-  // Convert buffer to readable stream
   const stream = Readable.from(fileBuffer)
 
   const res = await drive.files.create({
@@ -226,10 +215,6 @@ export async function uploadFileToDrive(params: {
   return res.data as DriveFileMetadata
 }
 
-/**
- * Deletes a file from Google Drive.
- * Does not throw if the file is already gone (404).
- */
 export async function deleteFileFromDrive(
   drive: drive_v3.Drive,
   fileId: string
@@ -238,15 +223,10 @@ export async function deleteFileFromDrive(
     await drive.files.delete({ fileId })
   } catch (err: any) {
     const status = err?.response?.status ?? err?.code
-    if (status !== 404) throw err   // re-throw non-404 errors
-    // 404 = already deleted — treat as success
+    if (status !== 404) throw err
   }
 }
 
-/**
- * Fetches live Drive file metadata.
- * Returns null if the file does not exist or is trashed.
- */
 export async function getFileMetadata(
   drive: drive_v3.Drive,
   fileId: string
@@ -269,11 +249,8 @@ export async function getFileMetadata(
   }
 }
 
-/**
- * Returns Drive storage quota for a pool account.
- */
 export async function getDriveQuota(drive: drive_v3.Drive): Promise<{
-  limit: number | null      // null = unlimited (G Suite)
+  limit: number | null
   usage: number
   usageInDrive: number
 }> {
@@ -289,10 +266,6 @@ export async function getDriveQuota(drive: drive_v3.Drive): Promise<{
   }
 }
 
-/**
- * Performs a lightweight connectivity + auth check against the Drive API.
- * Returns latency in ms and whether the call succeeded.
- */
 export async function pingDriveAccount(poolId: string): Promise<{
   ok: boolean
   latencyMs: number
@@ -312,19 +285,9 @@ export async function pingDriveAccount(poolId: string): Promise<{
     const quotaBytes = quota?.limit  ? parseInt(quota.limit,  10) : 15 * 1024 ** 3
     const usedBytes  = quota?.usage  ? parseInt(quota.usage,  10) : 0
 
-    return {
-      ok:          true,
-      latencyMs,
-      email:       res.data.user?.emailAddress ?? undefined,
-      quotaBytes,
-      usedBytes,
-    }
+    return { ok: true, latencyMs, email: res.data.user?.emailAddress ?? undefined, quotaBytes, usedBytes }
   } catch (err: any) {
-    return {
-      ok:        false,
-      latencyMs: Date.now() - start,
-      error:     err?.message ?? String(err),
-    }
+    return { ok: false, latencyMs: Date.now() - start, error: err?.message ?? String(err) }
   }
 }
 
@@ -333,8 +296,16 @@ export async function pingDriveAccount(poolId: string): Promise<{
 // =============================================================================
 
 /**
- * Generates the Google OAuth2 authorization URL for a user.
- * Redirect the user's browser to this URL.
+ * Generates the Google OAuth2 authorization URL.
+ *
+ * SCOPE: 'https://www.googleapis.com/auth/drive' (full Drive access)
+ *
+ * We need full Drive scope because:
+ * - drive.file scope cannot search/list files not created by this app
+ * - files.list() for folder search returns empty with drive.file scope
+ * - Folder management requires being able to find existing folders
+ *
+ * Users who connected with the old drive.file scope must reconnect.
  */
 export function getAuthorizationUrl(username: string, redirectUri: string): string {
   const oauth2 = buildOAuth2Client()
@@ -342,21 +313,17 @@ export function getAuthorizationUrl(username: string, redirectUri: string): stri
   return oauth2.generateAuthUrl({
     access_type:            'offline',
     prompt:                 'consent',
-    include_granted_scopes: false,       // ← ADD THIS
+    include_granted_scopes: false,
     scope: [
-      'https://www.googleapis.com/auth/drive.file',
+      'https://www.googleapis.com/auth/drive',       // FIX: was drive.file — full access needed
       'https://www.googleapis.com/auth/userinfo.email',
-      'openid',                          // ← ADD THIS (Google requires it when using userinfo)
+      'openid',
     ],
     redirect_uri: redirectUri,
     state: JSON.stringify({ username }),
   })
 }
 
-/**
- * Exchanges an authorization code for OAuth2 tokens.
- * Called in the OAuth2 callback route.
- */
 export async function exchangeCodeForTokens(code: string, redirectUri: string) {
   const oauth2    = buildOAuth2Client()
   const { tokens } = await oauth2.getToken({ code, redirect_uri: redirectUri })
@@ -371,9 +338,6 @@ export async function exchangeCodeForTokens(code: string, redirectUri: string) {
   return tokens
 }
 
-/**
- * Gets the authenticated user's Gmail address using an access token.
- */
 export async function getAuthenticatedEmail(accessToken: string): Promise<string> {
   const oauth2 = buildOAuth2Client()
   oauth2.setCredentials({ access_token: accessToken })

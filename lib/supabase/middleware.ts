@@ -1,7 +1,8 @@
-
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+
+const isProduction = process.env.NODE_ENV === 'production'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -19,14 +20,18 @@ export async function updateSession(request: NextRequest) {
             request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({ request })
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options))
+            supabaseResponse.cookies.set(name, value, {
+              ...options,
+              secure:   isProduction,
+              httpOnly: true,
+              sameSite: 'lax',
+            })
+          )
         },
       },
     }
   )
 
-  // Refresh the session — do not remove this
   const { data: { user } } = await supabase.auth.getUser()
-
   return { supabase, supabaseResponse, user }
 }

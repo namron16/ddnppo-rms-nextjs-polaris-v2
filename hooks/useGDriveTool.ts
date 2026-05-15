@@ -112,20 +112,30 @@ export function useGDrivePool() {
 
         xhr.addEventListener('load', () => {
           if (xhr.status === 201) {
-            const json = JSON.parse(xhr.responseText)
-            const r    = json.data
-            resolve({
-              success:       true,
-              driveUrl:      r.driveUrl,
-              downloadUrl:   r.downloadUrl,
-              gdriveFileId:  r.gdriveFileId,
-              poolAccountId: r.poolAccountId,
-              accountEmail:  r.accountEmail,
-              recordId:      r.record?.id,
-            })
+            try {
+              const json = JSON.parse(xhr.responseText)
+              const r    = json.data
+              resolve({
+                success:       true,
+                // The API route returns the PoolUploadResult shape from uploadViaPool:
+                // { fileUrl, downloadUrl, previewUrl, gdriveFileId, poolAccountId, accountEmail, recordId, sizeBytes }
+                driveUrl:      r.fileUrl      ?? r.driveUrl,
+                downloadUrl:   r.downloadUrl,
+                gdriveFileId:  r.gdriveFileId,
+                poolAccountId: r.poolAccountId,
+                accountEmail:  r.accountEmail,
+                recordId:      r.recordId     ?? r.record?.id,
+              })
+            } catch {
+              resolve({ success: false, error: 'Failed to parse upload response.' })
+            }
           } else {
-            const json = JSON.parse(xhr.responseText)
-            resolve({ success: false, error: json.error ?? `HTTP ${xhr.status}` })
+            try {
+              const json = JSON.parse(xhr.responseText)
+              resolve({ success: false, error: json.error ?? `HTTP ${xhr.status}` })
+            } catch {
+              resolve({ success: false, error: `HTTP ${xhr.status}` })
+            }
           }
         })
 
@@ -228,39 +238,57 @@ export function useGDrivePool() {
 }
 
 // =============================================================================
-// SIMPLER STANDALONE HOOK: just upload to Drive, get back the URL
+// FULL DRIVE UPLOAD RESULT — returned by useDriveUpload
+// =============================================================================
+
+export interface DriveUploadResult {
+  fileUrl: string          // webViewLink — use for display / viewing
+  downloadUrl: string      // webContentLink — use for direct downloads
+  gdriveFileId: string
+  poolAccountId: string
+  accountEmail: string
+  recordId: string
+}
+
+// =============================================================================
+// SIMPLER STANDALONE HOOK: upload a file and get back the full Drive result
 // =============================================================================
 
 /**
- * Minimal hook for components that just need to upload a file and get a URL.
- * Replaces the Supabase Storage upload pattern used in existing modals.
+ * Minimal hook for components that need to upload a file and get Drive metadata back.
+ * Returns the full DriveUploadResult so callers can persist gdriveFileId, poolAccountId, etc.
  *
  * @example
- * const { uploadToDrive, uploading, driveUrl } = useDriveUpload()
+ * const { uploadToDrive, uploading } = useDriveUpload()
  *
- * const handleFileChange = async (file: File) => {
- *   const url = await uploadToDrive(file, 'master_documents', {
- *     uploadedBy: user.role,
- *     entityId:   newDocId,
- *     entityType: 'master_document',
- *   })
- *   if (url) setFileUrl(url)
+ * const result = await uploadToDrive(file, 'master_documents', {
+ *   uploadedBy: user.role,
+ *   entityId:   newDocId,
+ *   entityType: 'master_document',
+ * })
+ * if (result) {
+ *   // result.fileUrl, result.gdriveFileId, result.poolAccountId, result.recordId
  * }
  */
 export function useDriveUpload() {
-  const [uploading,  setUploading]  = useState(false)
-  const [driveUrl,   setDriveUrl]   = useState<string | null>(null)
+  const [uploading,   setUploading]   = useState(false)
+  const [driveUrl,    setDriveUrl]    = useState<string | null>(null)
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null)
-  const [progress,   setProgress]   = useState(0)
-  const [error,      setError]      = useState<string | null>(null)
+  const [progress,    setProgress]    = useState(0)
+  const [error,       setError]       = useState<string | null>(null)
 
   const { uploadFile } = useGDrivePool()
 
+  /**
+   * Uploads a file and returns the full Drive result, or null on failure.
+   * All Drive metadata (gdriveFileId, poolAccountId, recordId) is included
+   * so callers can store it in Supabase alongside the document record.
+   */
   const uploadToDrive = useCallback(async (
     file: File,
     category: DocumentCategory,
     meta: { uploadedBy: string; entityId?: string; entityType?: string }
-  ): Promise<string | null> => {
+  ): Promise<DriveUploadResult | null> => {
     setUploading(true)
     setDriveUrl(null)
     setDownloadUrl(null)
@@ -277,10 +305,22 @@ export function useDriveUpload() {
 
     setUploading(false)
 
-    if (result.success && result.driveUrl) {
+    if (
+      result.success &&
+      result.driveUrl &&
+      result.gdriveFileId &&
+      result.poolAccountId
+    ) {
       setDriveUrl(result.driveUrl)
       setDownloadUrl(result.downloadUrl ?? null)
-      return result.driveUrl
+      return {
+        fileUrl:       result.driveUrl,
+        downloadUrl:   result.downloadUrl ?? '',
+        gdriveFileId:  result.gdriveFileId,
+        poolAccountId: result.poolAccountId,
+        accountEmail:  result.accountEmail ?? '',
+        recordId:      result.recordId     ?? '',
+      }
     }
 
     setError(result.error ?? 'Upload failed.')
