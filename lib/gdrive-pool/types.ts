@@ -11,17 +11,25 @@ export type PoolStatus = 'ACTIVE' | 'ERROR' | 'MAINTENANCE'
 /** Mirrors public.users */
 export interface DbUser {
   id: string
-  username: string        // 'P1' | 'P2' | … | 'admin'
+  username: string        // 'P1' | 'P2' | … | 'admin' | 'DPDA'
   email: string | null
   role: UserRole
   created_at: string
 }
 
-/** Mirrors public.storage_pool (safe projection — no token fields) */
+/**
+ * Mirrors public.storage_pool (safe projection — no token fields).
+ * After migration 003:
+ *   - owner_username: denormalized username, indexed for fast scoped queries
+ *   - label: human-readable name for this Drive account ("Primary Drive", "Drive 2")
+ *   - UNIQUE(user_id) dropped — multiple Drive accounts per user now allowed
+ */
 export interface DbStoragePool {
   id: string
   user_id: string
+  owner_username: string      // denorm of users.username — e.g. 'P1', 'DPDA'
   account_email: string
+  label: string               // e.g. 'Primary Drive', 'Work Drive'
   root_folder_id: string | null
   quota_bytes: number
   current_usage_bytes: number
@@ -181,8 +189,8 @@ export interface UploadRequest {
   category: DocumentCategory
   entityType?: string
   entityId?: string
-  uploadedBy: string        // username / role
-  preferredPoolId?: string  // pin to specific account (optional)
+  uploadedBy: string        // username / role string — e.g. 'P1', 'DPDA', 'admin'
+  preferredPoolId?: string  // pin to specific account (must belong to uploadedBy)
   fileSizeBytes: number
 }
 
@@ -217,6 +225,8 @@ export type HealthStatus = 'healthy' | 'degraded' | 'unreachable' | 'auth_error'
 export interface AccountHealthResult {
   poolAccountId: string
   accountEmail: string
+  ownerUsername: string       // which user owns this Drive account
+  label: string               // 'Primary Drive', 'Drive 2', etc.
   status: HealthStatus
   poolDbStatus: PoolStatus
   latencyMs: number
@@ -254,8 +264,8 @@ export interface SystemHealthReport {
 // =============================================================================
 
 export interface ConnectAccountRequest {
-  username: string          // 'P1' | 'P2' | …
-  authorizationCode: string // from Google OAuth2 redirect
+  username: string          // 'P1' | 'P2' | … | 'DPDA' | 'admin'
+  authorizationCode: string
   redirectUri: string
 }
 
@@ -269,7 +279,7 @@ export interface ConnectAccountResult {
 
 export interface DisconnectAccountResult {
   success: boolean
-  filesOrphaned: number    // files that were in this drive — now inaccessible
+  filesOrphaned: number
   error?: string
 }
 
@@ -282,6 +292,6 @@ export type PoolSelectionStrategy = 'least_used' | 'round_robin' | 'pinned'
 export interface PoolSelectionOptions {
   strategy: PoolSelectionStrategy
   fileSizeBytes: number
-  pinnedPoolId?: string     // used when strategy = 'pinned'
-  excludePoolIds?: string[] // skip specific accounts
+  pinnedPoolId?: string
+  excludePoolIds?: string[]
 }

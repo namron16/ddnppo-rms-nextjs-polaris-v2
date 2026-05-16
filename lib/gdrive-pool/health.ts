@@ -1,8 +1,5 @@
 // lib/gdrive-pool/health.ts
 // Health & Maintenance Monitor for the Drive Pooling System.
-//
-// Runs per-account connectivity checks, token validation, quota checks,
-// and inaccessible file detection. Produces a structured SystemHealthReport.
 
 import { pingDriveAccount, getDriveClient, getFileMetadata } from './drive-client'
 import {
@@ -13,7 +10,6 @@ import {
   markRecordInaccessible,
   getRecordsByCategory,
   rpcGetPoolSummary,
-  getRecentHealthEvents,
 } from './db'
 import type {
   AccountHealthResult,
@@ -22,20 +18,13 @@ import type {
   DbStoragePool,
 } from './types'
 
-const QUOTA_WARN_PCT  = 80   // warn at 80%
-const QUOTA_ERROR_PCT = 95   // error at 95%
+const QUOTA_WARN_PCT  = 80
+const QUOTA_ERROR_PCT = 95
 
 // =============================================================================
 // SINGLE ACCOUNT HEALTH CHECK
 // =============================================================================
 
-/**
- * Performs a full health check on one pool account.
- * - Pings the Drive API
- * - Validates token freshness
- * - Checks quota levels
- * - Generates human-readable recommendations
- */
 export async function checkAccountHealth(
   account: DbStoragePool
 ): Promise<AccountHealthResult> {
@@ -44,28 +33,30 @@ export async function checkAccountHealth(
   const ping = await pingDriveAccount(account.id)
   const latencyMs = Date.now() - start
 
-  // Derive health status
   let status: HealthStatus = 'healthy'
   const recommendations: string[] = []
 
   if (!ping.ok) {
     const errLower = (ping.error ?? '').toLowerCase()
 
-    if (errLower.includes('invalid_grant') || errLower.includes('reconnect') || errLower.includes('revoked')) {
+    if (
+      errLower.includes('invalid_grant') ||
+      errLower.includes('reconnect') ||
+      errLower.includes('revoked')
+    ) {
       status = 'auth_error'
       recommendations.push(
-        `🔑 Account ${account.account_email} has a revoked Google token. ` +
-        `The user must reconnect their Google Drive from the settings page.`
+        `🔑 Account ${account.account_email} (${account.owner_username} — ${account.label}) ` +
+        `has a revoked Google token. The admin must reconnect it at /admin/gdrive.`
       )
     } else {
       status = 'unreachable'
       recommendations.push(
-        `🔴 Cannot reach Google Drive for ${account.account_email}. ` +
-        `Check network connectivity and try again. Error: ${ping.error}`
+        `🔴 Cannot reach Google Drive for ${account.account_email} ` +
+        `(${account.owner_username}). Error: ${ping.error}`
       )
     }
   } else {
-    // Use live quota from Drive API if available, else fall back to DB
     const quotaBytes = ping.quotaBytes ?? account.quota_bytes
     const usedBytes  = ping.usedBytes  ?? account.current_usage_bytes
     const usagePct   = quotaBytes > 0 ? (usedBytes / quotaBytes) * 100 : 0
@@ -73,36 +64,35 @@ export async function checkAccountHealth(
     if (usagePct >= QUOTA_ERROR_PCT) {
       status = 'quota_exceeded'
       recommendations.push(
-        `🟥 Account ${account.account_email} is ${usagePct.toFixed(1)}% full. ` +
-        `Uploads will fail. Ask the user to free up Google Drive space or connect an additional account.`
+        `🟥 ${account.account_email} (${account.owner_username} — ${account.label}) ` +
+        `is ${usagePct.toFixed(1)}% full. Uploads for ${account.owner_username} will fail. ` +
+        `Connect an additional Drive account for this user at /admin/gdrive.`
       )
     } else if (usagePct >= QUOTA_WARN_PCT) {
       status = 'degraded'
       recommendations.push(
-        `🟡 Account ${account.account_email} is ${usagePct.toFixed(1)}% full (>${QUOTA_WARN_PCT}% threshold). ` +
-        `Consider uploading to other accounts to distribute load.`
+        `🟡 ${account.account_email} (${account.owner_username} — ${account.label}) ` +
+        `is ${usagePct.toFixed(1)}% full. Consider connecting an additional Drive account.`
       )
     }
 
     if (latencyMs > 3000) {
       if (status === 'healthy') status = 'degraded'
       recommendations.push(
-        `⏱ Account ${account.account_email} responded slowly (${latencyMs}ms). ` +
-        `This may indicate network issues or Drive API rate limiting.`
+        `⏱ ${account.account_email} responded slowly (${latencyMs}ms).`
       )
     }
   }
 
-  // Token validity check (from DB expiry, not Drive API)
   const tokenValid = account.last_refreshed !== null && account.status !== 'ERROR'
   if (!tokenValid && status === 'healthy') {
     status = 'auth_error'
     recommendations.push(
-      `⚠️ Account ${account.account_email} has no valid token record in Supabase. Reconnect required.`
+      `⚠️ ${account.account_email} (${account.owner_username}) has no valid token. ` +
+      `Reconnect at /admin/gdrive.`
     )
   }
 
-  // Persist result to DB
   await updateHealthCheckResult(account.id, ping.ok, ping.error)
 
   await logHealthEvent({
@@ -118,17 +108,19 @@ export async function checkAccountHealth(
   return {
     poolAccountId:  account.id,
     accountEmail:   account.account_email,
+    ownerUsername:  account.owner_username,
+    label:          account.label,
     status,
     poolDbStatus:   ping.ok ? 'ACTIVE' : 'ERROR',
     latencyMs,
     quotaBytes:     ping.quotaBytes ?? account.quota_bytes,
     usedBytes:      ping.usedBytes  ?? account.current_usage_bytes,
     usagePct:       ping.quotaBytes
-      ? Math.round((( ping.usedBytes ?? 0) / ping.quotaBytes) * 1000) / 10
+      ? Math.round(((ping.usedBytes ?? 0) / ping.quotaBytes) * 1000) / 10
       : Math.round((account.current_usage_bytes / account.quota_bytes) * 1000) / 10,
     fileCount:      account.file_count,
     tokenValid,
-    tokenExpiresAt: null,   // not exposed for security
+    tokenExpiresAt: null,
     errorMessage:   ping.error ?? account.error_message,
     lastChecked:    new Date().toISOString(),
     recommendations,
@@ -139,10 +131,6 @@ export async function checkAccountHealth(
 // FULL SYSTEM HEALTH REPORT
 // =============================================================================
 
-/**
- * Runs health checks on all pool accounts in parallel and returns
- * a complete SystemHealthReport with aggregated stats and recommendations.
- */
 export async function runSystemHealthCheck(): Promise<SystemHealthReport> {
   const checkedAt = new Date().toISOString()
   const accounts  = await getAllPoolAccounts()
@@ -158,17 +146,19 @@ export async function runSystemHealthCheck(): Promise<SystemHealthReport> {
         totalUsedGb: 0, totalQuotaGb: 0, usagePct: 0,
       },
       recommendations: [
-        '🚫 No Google Drive accounts are connected. Use the Connect flow for P1–P10 to link their Google accounts.',
+        '🚫 No Google Drive accounts connected. ' +
+        'Use /admin/gdrive to connect Drive accounts for each user.',
       ],
     }
   }
 
-  // Run all checks concurrently (with per-account error isolation)
   const results = await Promise.all(
     accounts.map(acc =>
       checkAccountHealth(acc).catch(err => ({
         poolAccountId:   acc.id,
         accountEmail:    acc.account_email,
+        ownerUsername:   acc.owner_username,
+        label:           acc.label,
         status:          'unreachable' as HealthStatus,
         poolDbStatus:    'ERROR' as const,
         latencyMs:       -1,
@@ -185,24 +175,22 @@ export async function runSystemHealthCheck(): Promise<SystemHealthReport> {
     )
   )
 
-  // Aggregate
   const summary = {
-    total:          results.length,
-    healthy:        results.filter(r => r.status === 'healthy').length,
-    degraded:       results.filter(r => r.status === 'degraded').length,
-    unreachable:    results.filter(r => r.status === 'unreachable').length,
-    authErrors:     results.filter(r => r.status === 'auth_error').length,
-    quotaExceeded:  results.filter(r => r.status === 'quota_exceeded').length,
-    totalUsedGb:    Math.round(results.reduce((s, r) => s + r.usedBytes, 0) / 1073741824 * 100) / 100,
-    totalQuotaGb:   Math.round(results.reduce((s, r) => s + r.quotaBytes, 0) / 1073741824 * 100) / 100,
-    usagePct:       0,
+    total:         results.length,
+    healthy:       results.filter(r => r.status === 'healthy').length,
+    degraded:      results.filter(r => r.status === 'degraded').length,
+    unreachable:   results.filter(r => r.status === 'unreachable').length,
+    authErrors:    results.filter(r => r.status === 'auth_error').length,
+    quotaExceeded: results.filter(r => r.status === 'quota_exceeded').length,
+    totalUsedGb:   Math.round(results.reduce((s, r) => s + r.usedBytes,  0) / 1073741824 * 100) / 100,
+    totalQuotaGb:  Math.round(results.reduce((s, r) => s + r.quotaBytes, 0) / 1073741824 * 100) / 100,
+    usagePct:      0,
   }
 
   summary.usagePct = summary.totalQuotaGb > 0
     ? Math.round((summary.totalUsedGb / summary.totalQuotaGb) * 1000) / 10
     : 0
 
-  // Overall status
   let overallStatus: SystemHealthReport['overallStatus'] = 'healthy'
   if (summary.authErrors + summary.unreachable >= summary.total) {
     overallStatus = 'critical'
@@ -215,39 +203,36 @@ export async function runSystemHealthCheck(): Promise<SystemHealthReport> {
     overallStatus = 'degraded'
   }
 
-  // Global recommendations
   const globalRecs: string[] = []
 
   if (summary.healthy === 0) {
-    globalRecs.push('🚨 CRITICAL: No healthy Drive accounts available. Uploads are blocked.')
+    globalRecs.push('🚨 CRITICAL: No healthy Drive accounts. All uploads are blocked.')
   }
 
   if (summary.usagePct >= QUOTA_WARN_PCT) {
     globalRecs.push(
       `📦 Overall storage is ${summary.usagePct}% full ` +
       `(${summary.totalUsedGb}GB / ${summary.totalQuotaGb}GB). ` +
-      `Consider connecting additional Google accounts.`
+      `Connect additional Drive accounts per user at /admin/gdrive.`
     )
   }
 
   if (summary.authErrors > 0) {
     globalRecs.push(
-      `🔑 ${summary.authErrors} account(s) have expired or revoked Google tokens. ` +
-      `Affected users must reconnect their Google Drive.`
+      `🔑 ${summary.authErrors} account(s) have expired tokens. ` +
+      `Reconnect them at /admin/gdrive.`
     )
   }
-
-  const allRecs = [
-    ...globalRecs,
-    ...results.flatMap(r => r.recommendations),
-  ]
 
   return {
     checkedAt,
     overallStatus,
     accounts: results,
     summary,
-    recommendations: allRecs,
+    recommendations: [
+      ...globalRecs,
+      ...results.flatMap(r => r.recommendations),
+    ],
   }
 }
 
@@ -255,20 +240,12 @@ export async function runSystemHealthCheck(): Promise<SystemHealthReport> {
 // FILE ACCESSIBILITY SCAN
 // =============================================================================
 
-/**
- * Checks whether previously uploaded files are still accessible in Drive.
- * Marks inaccessible records and returns a summary.
- * 
- * Run this on a slower schedule (e.g., daily) as it makes per-file API calls.
- */
 export async function scanFileAccessibility(poolAccountId?: string): Promise<{
-  checked:       number
-  inaccessible:  number
-  newlyBroken:   string[]   // Drive file IDs newly found broken
+  checked:      number
+  inaccessible: number
+  newlyBroken:  string[]
 }> {
-  const category = 'master_documents'   // scan most critical category first
-  const records  = await getRecordsByCategory(category as any, 200, 0)
-
+  const records  = await getRecordsByCategory('master_documents' as any, 200, 0)
   const filtered = poolAccountId
     ? records.filter(r => r.pool_account_id === poolAccountId)
     : records
@@ -282,7 +259,6 @@ export async function scanFileAccessibility(poolAccountId?: string): Promise<{
       const metadata = await getFileMetadata(drive, record.gdrive_file_id)
 
       if (!metadata) {
-        // File gone or trashed
         await markRecordInaccessible(record.id)
         inaccessible++
         if (record.is_accessible) newlyBroken.push(record.gdrive_file_id)
@@ -299,17 +275,9 @@ export async function scanFileAccessibility(poolAccountId?: string): Promise<{
 // REPAIR HELPERS
 // =============================================================================
 
-/**
- * Attempts to repair broken Drive connections by:
- * - Checking if the refresh token still works
- * - If not, marking account for reconnect
- * - If yes, clearing the error state
- *
- * Returns a per-account repair summary.
- */
 export async function repairBrokenAccounts(): Promise<{
-  attempted: number
-  repaired:  number
+  attempted:   number
+  repaired:    number
   stillBroken: string[]
 }> {
   const accounts = await getAllPoolAccounts()
@@ -327,12 +295,12 @@ export async function repairBrokenAccounts(): Promise<{
         pool_account_id: acc.id,
         event_type:      'repair',
         status:          'ok',
-        message:         `Account repaired — Drive API now reachable (${ping.latencyMs}ms)`,
+        message:         `Account repaired — Drive API reachable (${ping.latencyMs}ms)`,
         latency_ms:      ping.latencyMs,
       })
       repaired++
     } else {
-      stillBroken.push(acc.account_email)
+      stillBroken.push(`${acc.owner_username}:${acc.account_email}`)
       await logHealthEvent({
         pool_account_id: acc.id,
         event_type:      'repair',
@@ -347,16 +315,16 @@ export async function repairBrokenAccounts(): Promise<{
 }
 
 // =============================================================================
-// QUICK STATUS (lightweight — no Drive API call)
+// QUICK STATUS (no Drive API call)
 // =============================================================================
 
 export async function getQuickStatus(): Promise<{
-  totalAccounts:  number
+  totalAccounts:   number
   healthyAccounts: number
-  totalUsedGb:    number
-  totalQuotaGb:   number
-  usagePct:       number
-  hasErrors:      boolean
+  totalUsedGb:     number
+  totalQuotaGb:    number
+  usagePct:        number
+  hasErrors:       boolean
 }> {
   const [accounts, summary] = await Promise.all([
     getAllPoolAccounts(),

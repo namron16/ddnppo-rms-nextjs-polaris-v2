@@ -48,21 +48,43 @@ const db = () => getServiceClient()
 // =============================================================================
 
 /**
- * Returns safe (no-token) pool rows for all accounts.
- * Ordered by current_usage_bytes ASC so the UI can show least-used first.
+ * Returns ALL pool accounts (safe projection — no tokens).
+ * Ordered by owner_username ASC, then least-used first within each user.
+ * Used by the admin overview page.
  */
 export async function getAllPoolAccounts(): Promise<DbStoragePool[]> {
   const { data, error } = await db()
     .from('storage_pool')
     .select(`
-      id, user_id, account_email, root_folder_id,
+      id, user_id, account_email, label, owner_username, root_folder_id,
       quota_bytes, current_usage_bytes, file_count,
       status, is_active, error_message,
       last_health_check, last_refreshed, connected_at, updated_at
     `)
+    .order('owner_username', { ascending: true })
     .order('current_usage_bytes', { ascending: true })
 
   if (error) throw new Error(`getAllPoolAccounts: ${error.message}`)
+  return (data ?? []) as DbStoragePool[]
+}
+
+/**
+ * Returns all Drive accounts owned by a specific user (by their username/role string).
+ * This is what the gateway uses to scope uploads — never crosses user boundaries.
+ */
+export async function getPoolAccountsByUsername(username: string): Promise<DbStoragePool[]> {
+  const { data, error } = await db()
+    .from('storage_pool')
+    .select(`
+      id, user_id, account_email, label, owner_username, root_folder_id,
+      quota_bytes, current_usage_bytes, file_count,
+      status, is_active, error_message,
+      last_health_check, last_refreshed, connected_at, updated_at
+    `)
+    .eq('owner_username', username)
+    .order('current_usage_bytes', { ascending: true })
+
+  if (error) throw new Error(`getPoolAccountsByUsername(${username}): ${error.message}`)
   return (data ?? []) as DbStoragePool[]
 }
 
@@ -82,23 +104,18 @@ export async function getPoolAccountFull(poolId: string): Promise<DbStoragePoolF
 }
 
 /**
- * Returns the full row for a user's connected Drive account.
+ * Returns the full row for a user's primary connected Drive account.
+ * "Primary" = least-used active account for that user.
+ * @deprecated Use getPoolAccountsByUsername() for full multi-account support.
  */
 export async function getPoolAccountByUsername(username: string): Promise<DbStoragePoolFull | null> {
-  // Join through users table
-  const { data: user, error: uErr } = await db()
-    .from('users')
-    .select('id')
-    .eq('username', username)
-    .maybeSingle()
-
-  if (uErr || !user) return null
-
   const { data, error } = await db()
     .from('storage_pool')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('owner_username', username)
     .eq('is_active', true)
+    .order('current_usage_bytes', { ascending: true })
+    .limit(1)
     .maybeSingle()
 
   if (error) throw new Error(`getPoolAccountByUsername(${username}): ${error.message}`)
@@ -156,19 +173,23 @@ export async function saveAccessToken(
 }
 
 /**
- * Stores initial OAuth2 tokens and creates the pool row.
- * Called once during the OAuth2 connect flow.
+ * Stores initial OAuth2 tokens and creates a NEW pool row for the user.
+ * Multiple rows per user are now allowed (one per connected Drive account).
+ *
+ * If the same Gmail address is reconnected, it upserts on account_email
+ * to refresh the tokens rather than creating a duplicate.
  */
 export async function upsertPoolAccount(params: {
-  username: string
-  accountEmail: string
-  refreshToken: string
-  accessToken: string
-  expiresIn: number
-  rootFolderId: string
+  username:      string
+  accountEmail:  string
+  refreshToken:  string
+  accessToken:   string
+  expiresIn:     number
+  rootFolderId:  string
+  label?:        string   // e.g. "Drive 1", "Work Drive" — defaults to "Primary Drive"
 }): Promise<string> {  // returns pool account ID
 
-  // Resolve user row
+  // Resolve user row by username (which equals the role string e.g. 'P1', 'DPDA')
   const { data: user, error: uErr } = await db()
     .from('users')
     .select('id')
@@ -178,22 +199,26 @@ export async function upsertPoolAccount(params: {
   if (uErr || !user) throw new Error(`User not found: ${params.username}`)
 
   const payload = {
-    user_id:                user.id,
-    account_email:          params.accountEmail,
-    encrypted_refresh_token: encryptToken(params.refreshToken),
-    access_token:           encryptToken(params.accessToken),
-    token_expiry:           expiryFromSecondsNow(params.expiresIn),
-    root_folder_id:         params.rootFolderId,
-    status:                 'ACTIVE' as PoolStatus,
-    is_active:              true,
-    error_message:          null,
-    last_refreshed:         new Date().toISOString(),
-    connected_at:           new Date().toISOString(),
+    user_id:                  user.id,
+    owner_username:           params.username,
+    account_email:            params.accountEmail,
+    label:                    params.label ?? 'Primary Drive',
+    encrypted_refresh_token:  encryptToken(params.refreshToken),
+    access_token:             encryptToken(params.accessToken),
+    token_expiry:             expiryFromSecondsNow(params.expiresIn),
+    root_folder_id:           params.rootFolderId,
+    status:                   'ACTIVE' as PoolStatus,
+    is_active:                true,
+    error_message:            null,
+    last_refreshed:           new Date().toISOString(),
+    connected_at:             new Date().toISOString(),
   }
 
+  // Upsert on account_email: if this Gmail was already connected, refresh its tokens.
+  // If it's a brand-new Gmail for this user, a new row is inserted.
   const { data, error } = await db()
     .from('storage_pool')
-    .upsert(payload, { onConflict: 'user_id' })
+    .upsert(payload, { onConflict: 'account_email' })
     .select('id')
     .single()
 
@@ -203,9 +228,9 @@ export async function upsertPoolAccount(params: {
 
 /**
  * Marks a pool account as disconnected (soft delete).
+ * Returns the count of file records now inaccessible.
  */
 export async function deactivatePoolAccount(poolId: string): Promise<number> {
-  // Count files before deactivating
   const { count } = await db()
     .from('records')
     .select('id', { count: 'exact', head: true })
@@ -216,7 +241,7 @@ export async function deactivatePoolAccount(poolId: string): Promise<number> {
     .update({
       is_active:     false,
       status:        'MAINTENANCE' as PoolStatus,
-      error_message: 'Disconnected by user',
+      error_message: 'Disconnected by admin',
     })
     .eq('id', poolId)
 
@@ -443,9 +468,20 @@ export async function rpcGetPoolSummary(): Promise<PoolSummary> {
   return (data as PoolSummary[])[0]
 }
 
-export async function rpcPickUploadTarget(fileSizeBytes: number): Promise<UploadTarget | null> {
+/**
+ * Picks the best upload target for a specific user.
+ * Only considers Drive accounts owned by that user — never crosses boundaries.
+ *
+ * @param username  The uploading user's role/username string (e.g. 'P1', 'DPDA')
+ * @param fileSizeBytes  File size in bytes — only accounts with enough free space are returned
+ */
+export async function rpcPickUploadTarget(
+  username: string,
+  fileSizeBytes: number
+): Promise<UploadTarget | null> {
   const { data, error } = await db().rpc('pick_upload_target', {
-    p_file_size_bytes: fileSizeBytes,
+    p_username:         username,
+    p_file_size_bytes:  fileSizeBytes,
   })
   if (error) throw new Error(`pick_upload_target RPC: ${error.message}`)
   const results = data as UploadTarget[]

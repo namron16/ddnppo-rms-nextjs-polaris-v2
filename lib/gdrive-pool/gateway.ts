@@ -1,16 +1,11 @@
 // lib/gdrive-pool/gateway.ts
-// Centralized Upload Gateway — G1
+// Centralized Upload Gateway
 //
-// FIXES:
-//  1. selectPoolAccount: also considers accounts marked ERROR that may have
-//     valid tokens — tries them before giving up entirely.
-//  2. resolveCategoryFolder: never relies on drive.files.list() to find 
-//     existing folders (drive.file scope cannot search all files). Instead 
-//     it always trusts the DB cache, and on cache miss creates a new folder 
-//     directly. This avoids the scope limitation entirely.
-//  3. Verbose logging throughout so failures appear in server logs.
-//  4. MIME type filter in uploadFile() now matches the API route's broader 
-//     allowlist (PDF, images, DOCX, XLSX).
+// KEY FIX (migration 003):
+//   selectPoolAccount() is now scoped to the uploading user's own Drive accounts.
+//   It NEVER routes an upload to another user's Drive account.
+//   The username (= role string e.g. 'P1', 'DPDA') is resolved from req.uploadedBy
+//   and passed through every fallback path.
 
 import { getDriveClient, findOrCreateFolder, uploadFileToDrive, deleteFileFromDrive } from './drive-client'
 import {
@@ -21,7 +16,7 @@ import {
   cacheFolderId,
   insertRecord,
   deleteRecord,
-  getAllPoolAccounts,
+  getPoolAccountsByUsername,
   getPoolAccountFull,
   markPoolAccountError,
   logHealthEvent,
@@ -33,7 +28,6 @@ import type {
   DeleteRequest,
   DeleteResult,
   DocumentCategory,
-  PoolSelectionOptions,
   DbRecord,
 } from './types'
 
@@ -54,71 +48,113 @@ function isMimeAllowed(mimeType: string): boolean {
 }
 
 // =============================================================================
-// POOL SELECTION
+// POOL SELECTION — scoped to the uploading user's own accounts only
 // =============================================================================
 
+interface ScopedPoolSelectionOptions {
+  /** The uploading user's username/role string — e.g. 'P1', 'DPDA', 'admin' */
+  username:       string
+  fileSizeBytes:  number
+  /** Pin to a specific account ID (must still belong to username) */
+  pinnedPoolId?:  string
+  excludePoolIds?: string[]
+}
+
 /**
- * Picks the best pool account for an upload.
+ * Picks the best Drive account for an upload.
+ * ONLY considers accounts owned by `username` — never touches other users' Drives.
  *
  * Strategy:
- *  1. If pinned and valid → use it
- *  2. RPC pick_upload_target (least-used, has quota)
- *  3. Fallback: any ACTIVE + is_active account ignoring size
- *  4. Last resort: any account with is_active=true even if status=ERROR
- *     (errors may be stale — the actual Drive call will fail fast if truly broken)
+ *  1. Pinned account (if valid and belongs to this user)
+ *  2. RPC pick_upload_target scoped to username (least-used with quota)
+ *  3. Fallback: any ACTIVE + is_active account for this user ignoring size
+ *  4. Last resort: any is_active account for this user even if status=ERROR
  */
-async function selectPoolAccount(opts: PoolSelectionOptions): Promise<string | null> {
+async function selectPoolAccount(opts: ScopedPoolSelectionOptions): Promise<string | null> {
+  const { username, fileSizeBytes, pinnedPoolId, excludePoolIds = [] } = opts
+
   // ── 1. Pinned account ────────────────────────────────────────────────────
-  if (opts.strategy === 'pinned' && opts.pinnedPoolId) {
+  if (pinnedPoolId) {
     try {
-      const row = await getPoolAccountFull(opts.pinnedPoolId)
-      if (row.is_active) {
-        console.log(`[Gateway] Using pinned pool account: ${opts.pinnedPoolId}`)
-        return opts.pinnedPoolId
+      const row = await getPoolAccountFull(pinnedPoolId)
+      // Security check: the pinned account MUST belong to this user
+      if (row.owner_username !== username) {
+        console.error(
+          `[Gateway] SECURITY: pinned pool ${pinnedPoolId} belongs to ` +
+          `${row.owner_username}, not ${username}. Ignoring pin.`
+        )
+      } else if (row.is_active) {
+        console.log(`[Gateway] Using pinned pool account: ${pinnedPoolId} (${row.account_email})`)
+        return pinnedPoolId
       }
     } catch (e: any) {
-      console.warn(`[Gateway] Pinned account ${opts.pinnedPoolId} lookup failed:`, e.message)
+      console.warn(`[Gateway] Pinned account ${pinnedPoolId} lookup failed:`, e.message)
     }
   }
 
-  // ── 2. RPC least-used selection ──────────────────────────────────────────
+  // ── 2. RPC least-used selection (scoped to this user) ───────────────────
   try {
-    const target = await rpcPickUploadTarget(opts.fileSizeBytes)
+    const target = await rpcPickUploadTarget(username, fileSizeBytes)
     if (target) {
-      console.log(`[Gateway] RPC picked pool account: ${target.pool_account_id} (${target.account_email})`)
+      console.log(
+        `[Gateway] RPC picked pool account for ${username}: ` +
+        `${target.pool_account_id} (${target.account_email})`
+      )
       return target.pool_account_id
     }
-    console.warn(`[Gateway] rpcPickUploadTarget returned null for fileSize=${opts.fileSizeBytes}`)
+    console.warn(
+      `[Gateway] rpcPickUploadTarget returned null for username=${username}, ` +
+      `fileSize=${fileSizeBytes}. All accounts may be full or inactive.`
+    )
   } catch (e: any) {
     console.warn('[Gateway] rpcPickUploadTarget threw:', e.message)
   }
 
-  // ── 3. Fallback: any ACTIVE account ─────────────────────────────────────
-  const allAccounts = await getAllPoolAccounts()
-  console.log(`[Gateway] Fallback: scanning ${allAccounts.length} pool accounts`)
+  // ── 3 & 4. Fallback: scan this user's own accounts directly ─────────────
+  const userAccounts = await getPoolAccountsByUsername(username)
 
-  const active = allAccounts.find(
-    a => a.is_active &&
-         a.status === 'ACTIVE' &&
-         !opts.excludePoolIds?.includes(a.id)
+  console.log(
+    `[Gateway] Fallback: scanning ${userAccounts.length} accounts for user ${username}`
+  )
+
+  if (userAccounts.length === 0) {
+    console.error(
+      `[Gateway] User ${username} has no connected Google Drive accounts. ` +
+      `An admin must connect a Drive account for this user at /admin/gdrive.`
+    )
+    return null
+  }
+
+  // Fallback 3: ACTIVE + is_active, not excluded
+  const active = userAccounts.find(
+    a => a.is_active && a.status === 'ACTIVE' && !excludePoolIds.includes(a.id)
   )
   if (active) {
-    console.log(`[Gateway] Fallback picked ACTIVE account: ${active.id} (${active.account_email})`)
+    console.log(
+      `[Gateway] Fallback picked ACTIVE account for ${username}: ` +
+      `${active.id} (${active.account_email})`
+    )
     return active.id
   }
 
-  // ── 4. Last resort: any is_active account (ignore status=ERROR) ──────────
-  // The ERROR status may be stale from a previous failed health check.
-  // Let the actual Drive API call determine if it truly fails.
-  const anyActive = allAccounts.find(
-    a => a.is_active && !opts.excludePoolIds?.includes(a.id)
+  // Fallback 4: any is_active (status=ERROR may be stale)
+  const anyActive = userAccounts.find(
+    a => a.is_active && !excludePoolIds.includes(a.id)
   )
   if (anyActive) {
-    console.warn(`[Gateway] Last-resort: using account with status=${anyActive.status}: ${anyActive.id} (${anyActive.account_email})`)
+    console.warn(
+      `[Gateway] Last-resort for ${username}: using account with ` +
+      `status=${anyActive.status}: ${anyActive.id} (${anyActive.account_email})`
+    )
     return anyActive.id
   }
 
-  console.error('[Gateway] No pool accounts available at all. Connected accounts:', allAccounts.map(a => `${a.account_email}(active=${a.is_active},status=${a.status})`).join(', '))
+  console.error(
+    `[Gateway] No usable Drive accounts for user ${username}. ` +
+    `Accounts: ${userAccounts.map(a =>
+      `${a.account_email}(active=${a.is_active},status=${a.status})`
+    ).join(', ')}`
+  )
   return null
 }
 
@@ -126,20 +162,6 @@ async function selectPoolAccount(opts: PoolSelectionOptions): Promise<string | n
 // CATEGORY FOLDER RESOLUTION
 // =============================================================================
 
-/**
- * Resolves the Drive folder ID for a category.
- *
- * IMPORTANT — drive.file scope limitation:
- *   The OAuth scope 'drive.file' only allows listing/searching files that
- *   this app created. drive.files.list() with a search query will NOT find
- *   folders created in a different session or by a different OAuth client,
- *   even if the folder is in the Drive account.
- *
- *   FIX: We treat the DB cache as the single source of truth. On a cache miss
- *   we create the folder directly without searching Drive first, then cache
- *   the result. This avoids the scope issue entirely. Duplicate folders may
- *   be created if the cache row is deleted, but that is benign.
- */
 async function resolveCategoryFolder(
   poolAccountId: string,
   category: DocumentCategory,
@@ -147,7 +169,7 @@ async function resolveCategoryFolder(
 ): Promise<string> {
   const folderName = CATEGORY_DISPLAY_NAMES[category]
 
-  // ── 1. DB cache hit → use it directly (no Drive API call needed) ─────────
+  // DB cache hit → no Drive API call needed
   const cached = await getCachedFolderId(poolAccountId, folderName)
   if (cached) {
     console.log(`[Gateway] Category folder cache hit: "${folderName}" → ${cached}`)
@@ -156,15 +178,10 @@ async function resolveCategoryFolder(
 
   console.log(`[Gateway] Category folder cache miss for "${folderName}" — creating in Drive`)
 
-  // ── 2. Cache miss → create folder directly (skip the search) ────────────
-  //    findOrCreateFolder does a search first, which may fail silently under
-  //    drive.file scope. Instead, we create unconditionally and cache the ID.
   const drive = await getDriveClient(poolAccountId)
 
   let folderId: string
   try {
-    // Attempt to use findOrCreateFolder (search + create). Under drive.file
-    // scope the search always returns empty so it effectively always creates.
     const result = await findOrCreateFolder(drive, folderName, rootFolderId)
     folderId = result.folderId
     console.log(`[Gateway] Folder "${folderName}" resolved: ${folderId} (isNew=${result.isNew})`)
@@ -173,9 +190,7 @@ async function resolveCategoryFolder(
     throw err
   }
 
-  // Cache so future uploads skip the Drive call
   await cacheFolderId(poolAccountId, folderName, folderId)
-
   return folderId
 }
 
@@ -184,24 +199,33 @@ async function resolveCategoryFolder(
 // =============================================================================
 
 export async function uploadFile(req: UploadRequest): Promise<UploadResult> {
-  console.log(`[Gateway] uploadFile() start: file="${req.fileName}", mime="${req.mimeType}", size=${req.fileSizeBytes}, category="${req.category}"`)
+  console.log(
+    `[Gateway] uploadFile() start: file="${req.fileName}", mime="${req.mimeType}", ` +
+    `size=${req.fileSizeBytes}, category="${req.category}", uploadedBy="${req.uploadedBy}"`
+  )
 
-  // ── 1. Validate mime type ────────────────────────────────────────────────
+  // ── 1. Validate MIME type ────────────────────────────────────────────────
   if (!isMimeAllowed(req.mimeType)) {
     const msg = `Unsupported MIME type: ${req.mimeType}. Allowed: PDF, images, DOCX, XLSX.`
     console.error('[Gateway]', msg)
     return { success: false, error: msg }
   }
 
-  // ── 2. Pick upload target ────────────────────────────────────────────────
+  // ── 2. Pick upload target — scoped to the uploading user ─────────────────
+  //
+  //  req.uploadedBy is the username/role string (e.g. 'P1', 'DPDA', 'admin').
+  //  selectPoolAccount guarantees it only picks from that user's own Drives.
+  //
   const poolAccountId = await selectPoolAccount({
-    strategy:      req.preferredPoolId ? 'pinned' : 'least_used',
+    username:      req.uploadedBy,
     fileSizeBytes: req.fileSizeBytes,
     pinnedPoolId:  req.preferredPoolId,
   })
 
   if (!poolAccountId) {
-    const msg = 'No active Drive account has sufficient storage. Connect additional accounts or free up space.'
+    const msg =
+      `No active Google Drive account found for user "${req.uploadedBy}". ` +
+      `An admin must connect a Drive account for this user at /admin/gdrive.`
     console.error('[Gateway]', msg)
     return { success: false, error: msg }
   }
@@ -210,14 +234,28 @@ export async function uploadFile(req: UploadRequest): Promise<UploadResult> {
   let poolRow: Awaited<ReturnType<typeof getPoolAccountFull>>
   try {
     poolRow = await getPoolAccountFull(poolAccountId)
-    console.log(`[Gateway] Pool account: ${poolRow.account_email}, root_folder_id=${poolRow.root_folder_id}`)
+    console.log(
+      `[Gateway] Pool account: ${poolRow.account_email} ` +
+      `(owner: ${poolRow.owner_username}), root_folder_id=${poolRow.root_folder_id}`
+    )
   } catch (err: any) {
     console.error('[Gateway] Failed to load pool account:', err.message)
     return { success: false, error: `Failed to load pool account: ${err.message}` }
   }
 
+  // Final ownership check — belt-and-suspenders
+  if (poolRow.owner_username !== req.uploadedBy) {
+    const msg =
+      `[Gateway] SECURITY VIOLATION: pool account ${poolAccountId} ` +
+      `belongs to ${poolRow.owner_username} but upload is from ${req.uploadedBy}. Blocked.`
+    console.error(msg)
+    return { success: false, error: 'Storage account ownership mismatch. Upload blocked.' }
+  }
+
   if (!poolRow.root_folder_id) {
-    const msg = `Pool account ${poolAccountId} (${poolRow.account_email}) has no root folder configured. Re-run the OAuth connect flow.`
+    const msg =
+      `Pool account ${poolAccountId} (${poolRow.account_email}) has no root folder configured. ` +
+      `Re-run the OAuth connect flow for user ${req.uploadedBy}.`
     console.error('[Gateway]', msg)
     return { success: false, error: msg }
   }
@@ -252,27 +290,27 @@ export async function uploadFile(req: UploadRequest): Promise<UploadResult> {
       mimeType:       req.mimeType,
       parentFolderId: categoryFolderId,
     })
-    console.log(`[Gateway] Drive upload success: fileId=${driveFile.id}, webViewLink=${driveFile.webViewLink}`)
+    console.log(
+      `[Gateway] Drive upload success: fileId=${driveFile.id}, ` +
+      `webViewLink=${driveFile.webViewLink}`
+    )
   } catch (err: any) {
     const msg = err?.message ?? String(err)
     console.error('[Gateway] Drive upload failed:', msg)
     console.error('[Gateway] Drive error stack:', err?.stack)
 
-    const isAuth = msg.toLowerCase().includes('invalid_grant') ||
-                   msg.toLowerCase().includes('unauthorized') ||
-                   msg.toLowerCase().includes('reconnect') ||
-                   msg.toLowerCase().includes('invalid credentials')
+    const isAuth =
+      msg.toLowerCase().includes('invalid_grant') ||
+      msg.toLowerCase().includes('unauthorized') ||
+      msg.toLowerCase().includes('reconnect') ||
+      msg.toLowerCase().includes('invalid credentials')
 
     if (isAuth) {
       await markPoolAccountError(poolAccountId, `Drive auth error: ${msg}`)
       console.error(`[Gateway] Auth error — marked account ${poolAccountId} as ERROR`)
     }
 
-    return {
-      success:       false,
-      poolAccountId,
-      error:         `Drive upload failed: ${msg}`,
-    }
+    return { success: false, poolAccountId, error: `Drive upload failed: ${msg}` }
   }
 
   // ── 6. Insert record into Supabase ───────────────────────────────────────
@@ -287,8 +325,8 @@ export async function uploadFile(req: UploadRequest): Promise<UploadResult> {
       category_folder_id: categoryFolderId,
       category:           req.category,
       size_bytes:         parseInt(driveFile.size ?? '0', 10) || req.fileSizeBytes,
-      drive_url:          driveFile.webViewLink   ?? null,
-      thumbnail_url:      driveFile.thumbnailLink ?? null,
+      drive_url:          driveFile.webViewLink    ?? null,
+      thumbnail_url:      driveFile.thumbnailLink  ?? null,
       download_url:       driveFile.webContentLink ?? null,
       entity_type:        req.entityType  ?? null,
       entity_id:          req.entityId    ?? null,
@@ -320,19 +358,24 @@ export async function uploadFile(req: UploadRequest): Promise<UploadResult> {
     pool_account_id: poolAccountId,
     event_type:      'health_check',
     status:          'ok',
-    message:         `Uploaded "${req.fileName}" (${(record.size_bytes / 1024).toFixed(1)} KB) to ${req.category}`,
-    latency_ms:      null,
+    message:
+      `Uploaded "${req.fileName}" (${(record.size_bytes / 1024).toFixed(1)} KB) ` +
+      `to ${req.category} for user ${req.uploadedBy}`,
+    latency_ms: null,
   })
 
-  console.log(`[Gateway] uploadFile() complete: gdriveFileId=${driveFile.id}, driveUrl=${driveFile.webViewLink}`)
+  console.log(
+    `[Gateway] uploadFile() complete: gdriveFileId=${driveFile.id}, ` +
+    `owner=${req.uploadedBy}, driveUrl=${driveFile.webViewLink}`
+  )
 
   return {
-    success:       true,
+    success:      true,
     record,
     poolAccountId,
     accountEmail:  poolRow.account_email,
     gdriveFileId:  driveFile.id,
-    driveUrl:      driveFile.webViewLink   ?? undefined,
+    driveUrl:      driveFile.webViewLink    ?? undefined,
     downloadUrl:   driveFile.webContentLink ?? undefined,
   }
 }
