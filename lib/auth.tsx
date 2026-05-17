@@ -11,7 +11,7 @@ export type AdminRole =
   | 'P1' | 'P2' | 'P3' | 'P4' | 'P5'
   | 'P6' | 'P7' | 'P8' | 'P9' | 'P10'
 
-export type RoleLevel = 'head' | 'deputy' | 'super_admin' | 'viewer'
+export type RoleLevel = 'head' | 'deputy' | 'super_admin' | 'viewer' | 'admin'
 
 export interface AdminUser {
   id:          string
@@ -59,8 +59,7 @@ function permissionsForRole(role: AdminRole): AdminUser['permissions'] {
 function levelForRole(role: AdminRole): RoleLevel {
   if (role === 'admin') return 'super_admin'
   if (role === 'DPDA' || role === 'DPDO') return 'deputy'
-  if (role === 'PD'   || role === 'P1')   return 'head'
-  return 'viewer'
+  return 'admin'
 }
 
 interface ProfileRow {
