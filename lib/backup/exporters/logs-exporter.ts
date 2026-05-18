@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import { getServiceClient } from '@/lib/gdrive-pool/db'
 
 export async function exportAdminLogsAsXlsx(
@@ -15,22 +15,33 @@ export async function exportAdminLogsAsXlsx(
     .order('created_at', { ascending: false })
 
   const rows = (logs ?? []).map(log => ({
-    'Log ID':     log.id,
-    'Role':       log.role,
-    'Action':     log.action,
+    'Log ID':      log.id,
+    'Role':        log.role,
+    'Action':      log.action,
     'Description': log.description,
-    'Timestamp':  new Date(log.created_at).toLocaleString('en-PH'),
+    'Timestamp':   new Date(log.created_at).toLocaleString('en-PH'),
   }))
 
-  const ws = XLSX.utils.json_to_sheet(rows)
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Admin Logs')
+  const workbook  = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet('Admin Logs')
 
-  // Auto-size columns
-  const colWidths = Object.keys(rows[0] ?? {}).map(key => ({
-    wch: Math.max(key.length, 20)
+  const columns = ['Log ID', 'Role', 'Action', 'Description', 'Timestamp'] as const
+
+  // Define columns with auto-sizing (min width 20)
+  worksheet.columns = columns.map(header => ({
+    header,
+    key:   header,
+    width: Math.max(header.length, 20),
   }))
-  ws['!cols'] = colWidths
 
-  return Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }))
+  // Bold header row
+  worksheet.getRow(1).font = { bold: true }
+
+  // Add data rows
+  for (const row of rows) {
+    worksheet.addRow(row)
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer()
+  return Buffer.from(buffer)
 }
